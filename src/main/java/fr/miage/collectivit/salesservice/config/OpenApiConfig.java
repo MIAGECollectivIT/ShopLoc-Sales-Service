@@ -1,4 +1,4 @@
-package fr.miage.collectivit.storeservice.config;
+package fr.miage.collectivit.salesservice.config;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -21,10 +21,10 @@ public class OpenApiConfig {
 
   public static final String SECURITY_SCHEME_NAME = "BearerAuth";
 
-  @Value("${application.openapi.title:ShopLoc - Store Service API}")
+  @Value("${application.openapi.title:ShopLoc - Sales Service API}")
   private String title;
 
-  @Value("${application.openapi.description:Store management REST API}")
+  @Value("${application.openapi.description:Sales management REST API}")
   private String description;
 
   @Value("${application.openapi.version:1.0.0}")
@@ -54,7 +54,7 @@ public class OpenApiConfig {
   @Value("${application.openapi.extensions.x-api-audience:ShopLoc Internal Microservices}")
   private String apiAudience;
 
-  @Value("${application.openapi.extensions.x-service-name:store-service}")
+  @Value("${application.openapi.extensions.x-service-name:sales-service}")
   private String serviceName;
 
   @Value("${application.openapi.extensions.x-service-environment:development}")

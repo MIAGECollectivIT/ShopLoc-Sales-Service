@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: store-service
+    name: sales-service
 
 springdoc:
   api-docs:
@@ -20,8 +20,8 @@ springdoc:
 # Application configuration including OpenAPI extensions and Authentication
 application:
   openapi:
-    title: "ShopLoc - Store Service API"
-    description: "Store & merchant management REST API for the ShopLoc platform"
+    title: "ShopLoc - Sales Service API"
+    description: "Sales management REST API for the ShopLoc platform"
     version: "1.0.0"
     contact:
       name: "MIAGE Collectiv'IT Team"
@@ -33,13 +33,13 @@ application:
     extensions:
       x-api-audience: "ShopLoc Internal Microservices"
       x-service-environment: "${ENVIRONMENT:development}"
-      x-service-name: "store-service"
+      x-service-name: "sales-service"
   security:
     auth-type: "Bearer JWT"
     jwt:
       header-name: "Authorization"
       token-prefix: "Bearer "
-      secret-key: "${JWT_SECRET:dGhpc2lzYXZlcnlzZWNyZXRqd3RzdG9yZXNlcnZpY2VrZXkxMjM0NTY=}"
+      secret-key: "${JWT_SECRET:dGhpc2lzYXZlcnlzZWNyZXRqd3RzYWxlc3NlcnZpY2VrZXkxMjM0NTY=}"
       issuer: "shoploc-auth-service"
       expiration-ms: 86400000
     description: "Authenticate using a JWT Bearer token. Enter your token prefixed with 'Bearer ' or simply the token value."

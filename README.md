@@ -1,5 +1,5 @@
-# ShopLoc - Store Service
-Merchant management microservice for the ShopLoc project (MIAGE Collectiv'IT).
+# ShopLoc - Sales Service
+Sales microservice for the ShopLoc project (MIAGE Collectiv'IT).
 
 ## Table of contents
 - [0. Prerequisites](#0-prerequisites)
@@ -86,10 +86,10 @@ npm install
 Build and run the multi-stage container image locally:
 ```bash
 # Build the Docker image
-docker build -t store-service .
+docker build -t sales-service .
 
 # Run the container (mapping port 8080)
-docker run -p 8080:8080 store-service
+docker run -p 8080:8080 sales-service
 ```
 
 #### Docker Compose
@@ -123,7 +123,7 @@ application:
     jwt:
       header-name: "Authorization"
       token-prefix: "Bearer "
-      secret-key: "${JWT_SECRET:dGhpc2lzYXZlcnlzZWNyZXRqd3RzdG9yZXNlcnZpY2VrZXkxMjM0NTY=}"
+      secret-key: "${JWT_SECRET:dGhpc2lzYXZlcnlzZWNyZXRqd3RzYWxlc3NlcnZpY2VrZXkxMjM0NTY=}"
       issuer: "shoploc-auth-service"
       expiration-ms: 86400000
     description: "Authenticate using a JWT Bearer token."
@@ -138,7 +138,7 @@ application:
     extensions:
       x-api-audience: "ShopLoc Internal Microservices"
       x-service-environment: "${ENVIRONMENT:development}"
-      x-service-name: "store-service"
+      x-service-name: "sales-service"
 ```
 
 ## 5. Project structure
@@ -154,20 +154,20 @@ application:
 ├── src/
 │   ├── main/
 │   │   ├── java/                # Java Spring Boot source code
-│   │   │   └── fr/miage/collectivit/storeservice/
+│   │   │   └── fr/miage/collectivit/salesservice/
 │   │   │       ├── config/
 │   │   │       │   └── OpenApiConfig.java          # Swagger & OpenAPI authentication setup
 │   │   │       ├── controller/
-│   │   │       │   └── StoreStatusController.java  # Sample endpoint with OpenAPI annotations
-│   │   │       └── StoreServiceApplication.java    # Application entrypoint
+│   │   │       │   └── SalesStatusController.java  # Sample endpoint with OpenAPI annotations
+│   │   │       └── SalesServiceApplication.java    # Application entrypoint
 │   │   └── resources/
 │   │       └── application.yaml                    # Application, OpenAPI & security configuration
 │   └── test/
 │       └── java/                # Unit & integration tests
-│           └── fr/miage/collectivit/storeservice/
+│           └── fr/miage/collectivit/salesservice/
 │               ├── controller/
-│               │   └── StoreStatusControllerTest.java
-│               └── StoreServiceApplicationTests.java
+│               │   └── SalesStatusControllerTest.java
+│               └── SalesServiceApplicationTests.java
 ├── docker-compose.yml           # Local multi-container development orchestration
 ├── Dockerfile                   # Multi-stage container image definition
 ├── mvnw                         # Maven Wrapper script (Linux / macOS)
