@@ -32,7 +32,7 @@ jobs:
         run: mvn clean verify
 
   # ==========================================
-  # JOB 2: BUILD & PUSH DOCKER IMAGE
+  # JOB 2: BUILD & PUSH DOCKER IMAGE (ARM64)
   # ==========================================
   build-and-push:
     name: Build & Push Docker (Dev)
@@ -44,6 +44,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up QEMU (ARM64 Emulation)
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -59,6 +62,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          platforms: linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}:dev
 
@@ -80,8 +84,9 @@ jobs:
           echo "$KUBECONFIG_CONTENT" > ~/.kube/config
           chmod 600 ~/.kube/config
           
+          REPO="${GITHUB_REPOSITORY,,}"
           echo "Deploying to DEV ($NAMESPACE) for $DEPLOYMENT_NAME with image tag: dev"
-          kubectl set image deployment/$DEPLOYMENT_NAME $DEPLOYMENT_NAME=ghcr.io/${{ github.repository }}:dev -n $NAMESPACE
+          kubectl set image deployment/$DEPLOYMENT_NAME $DEPLOYMENT_NAME=ghcr.io/$REPO:dev -n $NAMESPACE
           
           # Force restart to ensure Kubernetes pulls the updated image tag
           kubectl rollout restart deployment/$DEPLOYMENT_NAME -n $NAMESPACE
