@@ -58,13 +58,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase image tag
+        run: echo "IMAGE_TAG=ghcr.io/${GITHUB_REPOSITORY,,}:dev" >> $GITHUB_ENV
+
       - name: Build and Push
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/arm64
           push: true
-          tags: ghcr.io/${{ github.repository }}:dev
+          tags: ${{ env.IMAGE_TAG }}
 
   # ==========================================
   # JOB 3: DEPLOY TO K3S (DEV)
