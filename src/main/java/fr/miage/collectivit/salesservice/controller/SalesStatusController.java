@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Controller exposing sales service status and health information with OpenAPI documentation. */
 @RestController
-@RequestMapping("/api/v1/sales")
+@RequestMapping("/v1/sales")
 @Tag(name = "Sales Status", description = "Operations related to sales service status")
 public class SalesStatusController {
 
