@@ -1,0 +1,9 @@
+application:
+  security:
+    jwt:
+      header-name: "Authorization"
+      token-prefix: "Bearer "
+      public-key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyoOfnlOHHR9obf8IepJ2Si9pnAnwNP131PG1yIrluKP7Ut0b4+iZC9dQRX7w90xGDoHK/zUdAn3lwY5v8J+kPNAI4EILdOiPVoytQe+Zd6jDOPWmo6IYh7V/pO4kqpgefQFgg6omxEu19cadaUiesxWSiPOnNOFsMpOEfiKLaO4txgfYQ1Amc9h72wktLo8ygUfvHzMJBrM2A5mS/ipjsLr/GnkbD2kTKSsma+xPfH0GFysKMKmAg2/9gXIT2Dmgv+3tMiZKfa908fPbK2iF7FpBs/YRYA+fh1QwlN6OPA0OgD2BOoQ5mTeqoTvcoyK7LkSX3S+9v30LN0V3q5hN/QIDAQAB"
+      secret-key: "dGhpc2lzYXZlcnlzZWNyZXRqd3R1c2Vyc3NlcnZpY2VrZXkxMjM0NTY="
+      issuer: "shoploc-auth-service"
+      expiration-ms: 86400000
