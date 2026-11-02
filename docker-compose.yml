@@ -24,7 +24,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080" # Port par défaut de Spring Boot
-    # environment:
+    environment:
+      JWT_PUBLIC_KEY: "${JWT_PUBLIC_KEY:-}"
+      USERS_SERVICE_URL: "${USERS_SERVICE_URL:-http://users-service:8080}"
     #   # Variables reconnues automatiquement par Spring Boot
     #   SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/app_db
     #   SPRING_DATASOURCE_USERNAME: devuser

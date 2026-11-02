@@ -39,7 +39,12 @@ application:
     jwt:
       header-name: "Authorization"
       token-prefix: "Bearer "
-      secret-key: "${JWT_SECRET:dGhpc2lzYXZlcnlzZWNyZXRqd3RzYWxlc3NlcnZpY2VrZXkxMjM0NTY=}"
+      public-key: "${JWT_PUBLIC_KEY:}"
       issuer: "shoploc-auth-service"
       expiration-ms: 86400000
     description: "Authenticate using a JWT Bearer token. Enter your token prefixed with 'Bearer ' or simply the token value."
+
+services:
+  users:
+    url: ${USERS_SERVICE_URL:http://users-service:8080}
+
