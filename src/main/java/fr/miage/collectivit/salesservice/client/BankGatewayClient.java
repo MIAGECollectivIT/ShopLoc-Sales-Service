@@ -3,11 +3,13 @@ package fr.miage.collectivit.salesservice.client;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
 import fr.miage.collectivit.salesservice.exception.PaymentGatewayException;
+import java.time.Duration;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -26,7 +28,11 @@ public class BankGatewayClient {
   public BankGatewayClient(
       @Value("${services.bank-gateway.url:http://external-mock-service:8080}")
           String bankGatewayUrl) {
-    this(RestClient.builder().baseUrl(bankGatewayUrl).build());
+    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+    requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+    requestFactory.setReadTimeout(Duration.ofSeconds(10));
+    this.restClient =
+        RestClient.builder().baseUrl(bankGatewayUrl).requestFactory(requestFactory).build();
   }
 
   public BankGatewayClient(RestClient restClient) {
