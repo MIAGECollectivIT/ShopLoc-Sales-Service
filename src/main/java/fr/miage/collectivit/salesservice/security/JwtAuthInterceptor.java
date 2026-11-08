@@ -26,6 +26,8 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
   private static final Set<String> PUBLIC_EXACT_PATHS = Set.of("/swagger-ui.html", "/error");
   private static final String DOCS_PREFIX = "/v3/api-docs";
   private static final String SWAGGER_PREFIX = "/swagger-ui";
+  private static final String ACTUATOR_PREFIX = "/actuator";
+  private static final String PAYMENTS_PREFIX = "/v1/sales/payments";
 
   private final JwtValidatorService jwtValidatorService;
 
@@ -42,17 +44,23 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     }
 
     String authHeader = request.getHeader(AUTH_HEADER);
-    if (authHeader == null
-        || !authHeader.regionMatches(true, 0, TOKEN_PREFIX, 0, TOKEN_PREFIX.length())) {
+    boolean hasBearerHeader =
+        authHeader != null
+            && authHeader.regionMatches(true, 0, TOKEN_PREFIX, 0, TOKEN_PREFIX.length());
+
+    if (!hasBearerHeader) {
+      if (isOptionalAuthPath(path)) {
+        return true;
+      }
       response.sendError(
           HttpServletResponse.SC_UNAUTHORIZED,
-          "En-tête d'autorisation manquant ou invalide. Un jeton Bearer JWT est requis.");
+          "Missing or invalid Authorization header. A Bearer JWT token is required.");
       return false;
     }
 
     String token = authHeader.substring(TOKEN_PREFIX.length()).trim();
     if (token.isEmpty()) {
-      response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Jeton JWT vide ou manquant.");
+      response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Empty or missing JWT token.");
       return false;
     }
 
@@ -66,7 +74,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     } catch (JwtException | IllegalArgumentException | SecurityException ex) {
       response.sendError(
           HttpServletResponse.SC_UNAUTHORIZED,
-          "Jeton d'authentification invalide ou expiré : " + ex.getMessage());
+          "Invalid or expired authentication token: " + ex.getMessage());
       return false;
     }
   }
@@ -75,6 +83,12 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     if (PUBLIC_EXACT_PATHS.contains(path)) {
       return true;
     }
-    return path.startsWith(DOCS_PREFIX) || path.startsWith(SWAGGER_PREFIX);
+    return path.startsWith(DOCS_PREFIX)
+        || path.startsWith(SWAGGER_PREFIX)
+        || path.startsWith(ACTUATOR_PREFIX);
+  }
+
+  private boolean isOptionalAuthPath(String path) {
+    return path.startsWith(PAYMENTS_PREFIX);
   }
 }
