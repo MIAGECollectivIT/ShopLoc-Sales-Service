@@ -23,8 +23,6 @@ public class PaymentService {
 
   private final BankGatewayClient bankGatewayClient;
   private final PaymentTransactionRepository paymentTransactionRepository;
-
-  @Transactional
   public PaymentAuthorizationResponse authorizePayment(
       PaymentAuthorizationRequest request, String userId) {
     PaymentAuthorizationResponse gatewayResponse = bankGatewayClient.authorize(request);
@@ -89,7 +87,13 @@ public class PaymentService {
     }
     try {
       return Instant.parse(timestamp);
-    } catch (DateTimeParseException ignored) {
+    } catch (DateTimeParseException ex) {
+      if (log.isInfoEnabled()) {
+        log.info(
+            "Invalid gateway timestamp '{}', falling back to current UTC time: {}",
+            timestamp,
+            ex.getMessage());
+      }
       return Instant.now();
     }
   }

@@ -86,12 +86,12 @@ public class JwtKeyProvider {
         PublicKey publicKey = keyFactory.generatePublic(new X509EncodedKeySpec(decoded));
         this.rsaParser = Jwts.parser().verifyWith(publicKey).build();
         if (log.isInfoEnabled()) {
-          log.info("JWT Validator initialisé avec clé publique RSA asymétrique (RS256).");
+          log.info("JWT Validator initialized with asymmetric RSA public key (RS256).");
         }
       }
     } catch (IllegalArgumentException | GeneralSecurityException ex) {
       if (log.isWarnEnabled()) {
-        log.warn("Impossible d'initialiser la clé publique RSA : {}", ex.getMessage());
+        log.warn("Unable to initialize RSA public key: {}", ex.getMessage());
       }
     }
   }
@@ -102,11 +102,11 @@ public class JwtKeyProvider {
       SecretKey secretKey = Keys.hmacShaKeyFor(keyBytes);
       this.hmacParser = Jwts.parser().verifyWith(secretKey).build();
       if (log.isInfoEnabled()) {
-        log.info("JWT Validator initialisé avec support clé symétrique HMAC.");
+        log.info("JWT Validator initialized with HMAC symmetric key support.");
       }
     } catch (IllegalArgumentException ex) {
       if (log.isWarnEnabled()) {
-        log.warn("Impossible d'initialiser la clé HMAC : {}", ex.getMessage());
+        log.warn("Unable to initialize HMAC key: {}", ex.getMessage());
       }
     }
   }
@@ -143,13 +143,12 @@ public class JwtKeyProvider {
       }
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
-      if (log.isDebugEnabled()) {
-        log.debug("Interruption lors de la récupération de la clé publique : {}", ex.getMessage());
+      if (log.isInfoEnabled()) {
+        log.info("Interrupted while fetching public key: {}", ex.getMessage());
       }
     } catch (IOException | IllegalArgumentException ex) {
-      if (log.isDebugEnabled()) {
-        log.debug(
-            "Impossible de récupérer la clé publique depuis users-service : {}", ex.getMessage());
+      if (log.isInfoEnabled()) {
+        log.info("Unable to fetch public key from users-service: {}", ex.getMessage());
       }
     }
   }
@@ -159,7 +158,7 @@ public class JwtKeyProvider {
     if (root.has(PROPERTY_PUBLIC_KEY)) {
       parseRsaPublicKey(root.get(PROPERTY_PUBLIC_KEY).asText());
       if (log.isInfoEnabled()) {
-        log.info("Clé publique RSA récupérée dynamiquement depuis {}", endpoint);
+        log.info("RSA public key dynamically fetched from {}", endpoint);
       }
     }
   }
@@ -179,7 +178,7 @@ public class JwtKeyProvider {
       return claimsOpt.get();
     }
 
-    throw new SecurityException("Aucune clé valide pour vérifier le jeton JWT.");
+    throw new SecurityException("No valid key available to verify JWT token.");
   }
 
   private Optional<Claims> tryParseWithRsa(String token) {
@@ -190,7 +189,7 @@ public class JwtKeyProvider {
       return Optional.of(rsaParser.parseSignedClaims(token).getPayload());
     } catch (JwtException | IllegalArgumentException ex) {
       if (hmacParser == null) {
-        throw new SecurityException("Jeton JWT invalide ou expiré : " + ex.getMessage(), ex);
+        throw new SecurityException("Invalid or expired JWT token: " + ex.getMessage(), ex);
       }
       return Optional.empty();
     }
@@ -203,7 +202,7 @@ public class JwtKeyProvider {
     try {
       return Optional.of(hmacParser.parseSignedClaims(token).getPayload());
     } catch (JwtException | IllegalArgumentException ex) {
-      throw new SecurityException("Jeton JWT invalide ou expiré : " + ex.getMessage(), ex);
+      throw new SecurityException("Invalid or expired JWT token: " + ex.getMessage(), ex);
     }
   }
 }

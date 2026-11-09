@@ -55,13 +55,13 @@ class SalesSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName("GET /v1/sales/status sans token -> doit renvoyer 401 Unauthorized")
+  @DisplayName("GET /v1/sales/status without token -> should return 401 Unauthorized")
   void shouldDenySalesStatusWithoutToken() throws Exception {
     mockMvc.perform(get("/v1/sales/status")).andExpect(status().isUnauthorized());
   }
 
   @Test
-  @DisplayName("GET /v1/sales/status avec JWT valide -> doit renvoyer 200 OK")
+  @DisplayName("GET /v1/sales/status with valid JWT -> should return 200 OK")
   void shouldAllowSalesStatusWithValidToken() throws Exception {
     String token = generateTestToken("CLIENT", "client@shoploc.fr", UUID.randomUUID().toString());
     mockMvc
@@ -72,7 +72,7 @@ class SalesSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName("GET /v1/sales/status avec token révoqué -> doit renvoyer 401 Unauthorized")
+  @DisplayName("GET /v1/sales/status with revoked token -> should return 401 Unauthorized")
   void shouldDenySalesStatusWithRevokedToken() throws Exception {
     String revokedJti = UUID.randomUUID().toString();
     jwtValidatorService.addRevokedJtiForTest(revokedJti);

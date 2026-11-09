@@ -1,40 +1,9 @@
 services:
-  # CONTENEUR 1 : Base de données PostgreSQL (commenté pour l'instant)
-  # db:
-  #   image: postgres:16-alpine
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_USER: devuser
-  #     POSTGRES_PASSWORD: devpassword
-  #     POSTGRES_DB: app_db
-  #   volumes:
-  #     - db_data:/var/lib/postgresql/data
-  #     - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-  #   ports:
-  #     - "5432:5432"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U devuser -d app_db"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
-
-  # CONTENEUR 2 : Backend Spring Boot
   backend:
     build: .
     restart: unless-stopped
     ports:
-      - "8080:8080" # Port par défaut de Spring Boot
+      - "8080:8080" # Default Spring Boot port
     environment:
       JWT_PUBLIC_KEY: "${JWT_PUBLIC_KEY:-}"
       USERS_SERVICE_URL: "${USERS_SERVICE_URL:-http://users-service:8080}"
-    #   # Variables reconnues automatiquement par Spring Boot
-    #   SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/app_db
-    #   SPRING_DATASOURCE_USERNAME: devuser
-    #   SPRING_DATASOURCE_PASSWORD: devpassword
-    #   SPRING_JPA_HIBERNATE_DDL_AUTO: update # ou "validate" selon votre besoin
-    # depends_on:
-    #   db:
-    #     condition: service_healthy
-
-# volumes:
-#   db_data:
