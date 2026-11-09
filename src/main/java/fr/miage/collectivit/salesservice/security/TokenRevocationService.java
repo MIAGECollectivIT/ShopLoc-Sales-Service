@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -56,9 +57,9 @@ public class TokenRevocationService {
     Set<String> newRevoked = parseRevokedTokens(responseBody);
     cachedRevokedJtis.clear();
     cachedRevokedJtis.addAll(newRevoked);
-    if (log.isDebugEnabled()) {
-      log.debug(
-          "Liste des jetons révoqués rafraîchie : {} jetons actifs.",
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Revoked tokens list refreshed: {} active tokens.",
           Integer.valueOf(cachedRevokedJtis.size()));
     }
   }
@@ -73,14 +74,14 @@ public class TokenRevocationService {
         }
       }
     } catch (IOException ex) {
-      if (log.isDebugEnabled()) {
-        log.debug("Impossible d'analyser les jetons révoqués : {}", ex.getMessage());
+      if (log.isInfoEnabled()) {
+        log.info("Unable to parse revoked tokens: {}", ex.getMessage());
       }
     }
     return result;
   }
 
-  private java.util.Optional<String> fetchRevokedTokensBody(String endpoint) {
+  private Optional<String> fetchRevokedTokensBody(String endpoint) {
     try (HttpClient client =
         HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS)).build()) {
       HttpRequest request =
@@ -91,19 +92,19 @@ public class TokenRevocationService {
               .build();
       HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() == HTTP_STATUS_OK) {
-        return java.util.Optional.of(response.body());
+        return Optional.of(response.body());
       }
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
-      if (log.isDebugEnabled()) {
-        log.debug("Interruption lors de la récupération des jetons révoqués : {}", ex.getMessage());
+      if (log.isInfoEnabled()) {
+        log.info("Interrupted while fetching revoked tokens: {}", ex.getMessage());
       }
     } catch (IOException | IllegalArgumentException ex) {
-      if (log.isDebugEnabled()) {
-        log.debug("Impossible de rafraîchir la liste des jetons révoqués : {}", ex.getMessage());
+      if (log.isInfoEnabled()) {
+        log.info("Unable to refresh revoked tokens list: {}", ex.getMessage());
       }
     }
-    return java.util.Optional.empty();
+    return Optional.empty();
   }
 
   public void addRevokedJtiForTest(String jti) {

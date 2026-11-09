@@ -25,7 +25,7 @@ public class JwtValidatorService {
   private void verifyNotRevoked(Claims claims) {
     String jti = claims.getId();
     if (jti != null && tokenRevocationService.isRevoked(jti)) {
-      throw new SecurityException("Jeton JWT révoqué. Veuillez vous reconnecter.");
+      throw new SecurityException("JWT token revoked. Please log in again.");
     }
   }
 
@@ -39,9 +39,5 @@ public class JwtValidatorService {
 
   public void addRevokedJtiForTest(String jti) {
     tokenRevocationService.addRevokedJtiForTest(jti);
-  }
-
-  public void refreshRevokedTokens() {
-    tokenRevocationService.refreshRevokedTokens();
   }
 }

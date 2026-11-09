@@ -29,15 +29,18 @@ Sales microservice for the ShopLoc project (MIAGE Collectiv'IT).
 ## 1. Tech Stack & Dependencies
 - **Spring Boot**: Foundation framework for creating standalone REST microservices.
 - **Spring Boot Starter WebMVC**: RESTful API development with embedded Apache Tomcat.
+- **Spring Boot Starter Data JPA & PostgreSQL**: Relational persistence with Hibernate ORM.
+- **Flyway Migration**: Automated database schema versioning (`classpath:db/migration`).
 - **Spring Boot Starter Validation**: Bean Validation with Hibernate Validator.
 - **Springdoc OpenAPI (Swagger UI)**: OpenAPI 3 interactive documentation (`/swagger-ui.html`) with JWT authentication support.
+- **JJWT (Java JWT)**: Asymmetric RSA (RS256) and symmetric HMAC token verification and revocation check.
 - **Project Lombok**: Reduces boilerplate code (getters, setters, builders, constructors) via annotation processing.
 - **Spring Boot Starter Test & Testing Suite**:
-  - JUnit Jupiter (JUnit 5)
+  - JUnit Jupiter (JUnit 5) & Cucumber BDD (Gherkin feature scenarios)
   - Mockito & Mockito JUnit Jupiter
-  - AssertJ, Hamcrest, JSONassert
+  - AssertJ, Hamcrest, JSONassert & H2 In-Memory Database
   - Spring Test Context Framework & MockMvc
-  - Spring Boot Starter Validation Test & WebMVC Test
+  - Spring Boot Starter Validation Test, WebMVC Test & Data JPA Test
 - **Maven Enforcer Plugin**: Enforces minimum versions for both Java (>= 21) and Maven (>= 3.8.0) during build.
 - **Spotless Maven Plugin**: Automated code formatting using Google Java Format.
 - **PMD Maven Plugin**: Static code analysis detecting code smells, anti-patterns, and error-prone constructs.
@@ -93,8 +96,7 @@ docker run -p 8080:8080 sales-service
 ```
 
 #### Docker Compose
-A `docker-compose.yml` file is provided for local multi-container orchestration.
-> **Note**: The PostgreSQL database service (`db`), its healthcheck, volume, and datasource environment variables in `docker-compose.yml` are temporarily commented out until database persistence is configured.
+A `docker-compose.yml` file is provided for local container orchestration:
 
 ```bash
 # Build and start services in detached mode
@@ -115,18 +117,20 @@ Once the service is started (`./mvnw spring-boot:run`), access the interactive S
 - **OpenAPI JSON specification**: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
 
 ### 4.2 Authentication in application.yaml
-Authentication is configured centrally in `application.yaml` under the `application.security` section:
+Authentication is configured in `application.yaml` under the `application.security` and `services.users` sections (supports static RSA public key or dynamic public key/revocation retrieval from `users-service`):
 ```yaml
 application:
   security:
     auth-type: "Bearer JWT"
     jwt:
-      header-name: "Authorization"
-      token-prefix: "Bearer "
-      secret-key: "${JWT_SECRET:dGhpc2lzYXZlcnlzZWNyZXRqd3RzYWxlc3NlcnZpY2VrZXkxMjM0NTY=}"
-      issuer: "shoploc-auth-service"
-      expiration-ms: 86400000
-    description: "Authenticate using a JWT Bearer token."
+      public-key: "${JWT_PUBLIC_KEY:}"
+    description: "Authenticate using a JWT Bearer token. Enter your token prefixed with 'Bearer ' or simply the token value."
+
+services:
+  users:
+    url: ${USERS_SERVICE_URL:http://users-service:8080}
+  bank-gateway:
+    url: ${EXTERNAL_MOCK_SERVICE_URL:http://external-mock-service:8080}
 ```
 In Swagger UI, click the **Authorize** button (padlock icon) to provide your JWT Bearer token. All authorized requests will automatically include the `Authorization: Bearer <token>` header.
 
@@ -155,20 +159,53 @@ application:
 │   ├── main/
 │   │   ├── java/                # Java Spring Boot source code
 │   │   │   └── fr/miage/collectivit/salesservice/
+│   │   │       ├── client/
+│   │   │       │   └── BankGatewayClient.java            # External bank gateway HTTP client with retry
 │   │   │       ├── config/
-│   │   │       │   └── OpenApiConfig.java          # Swagger & OpenAPI authentication setup
+│   │   │       │   ├── OpenApiConfig.java                # Swagger & OpenAPI authentication setup
+│   │   │       │   └── WebConfig.java                    # CORS & JWT interceptor registration
 │   │   │       ├── controller/
-│   │   │       │   └── SalesStatusController.java  # Sample endpoint with OpenAPI annotations
-│   │   │       └── SalesServiceApplication.java    # Application entrypoint
+│   │   │       │   ├── PaymentController.java            # Payment authorization & lookup endpoints (RG001)
+│   │   │       │   └── SalesStatusController.java        # Service health/status endpoint
+│   │   │       ├── dto/
+│   │   │       │   ├── PaymentAuthorizationRequest.java  # Request DTO with Bean Validation
+│   │   │       │   └── PaymentAuthorizationResponse.java # Response DTO compliant with RG001
+│   │   │       ├── exception/
+│   │   │       │   ├── GlobalExceptionHandler.java       # Centralized REST exception handling
+│   │   │       │   ├── PaymentGatewayException.java      # 502 Bad Gateway exception
+│   │   │       │   └── PaymentNotFoundException.java     # 404 Not Found exception
+│   │   │       ├── model/
+│   │   │       │   └── PaymentTransaction.java           # JPA entity for payment_transactions
+│   │   │       ├── repository/
+│   │   │       │   └── PaymentTransactionRepository.java # Spring Data JPA repository
+│   │   │       ├── security/
+│   │   │       │   ├── JwtAuthInterceptor.java           # HTTP interceptor for Bearer JWT validation
+│   │   │       │   ├── JwtKeyProvider.java               # RSA/HMAC key loader & dynamic fetcher
+│   │   │       │   ├── JwtValidatorService.java          # Token signature & revocation validator
+│   │   │       │   └── TokenRevocationService.java       # Revoked JTI cache synchronized with users-service
+│   │   │       ├── service/
+│   │   │       │   └── PaymentService.java               # Business logic for RG001 payment authorization
+│   │   │       └── SalesServiceApplication.java          # Application entrypoint
 │   │   └── resources/
-│   │       └── application.yaml                    # Application, OpenAPI & security configuration
+│   │       ├── db/migration/
+│   │       │   └── V1__create_payment_transactions.sql   # Flyway schema migration
+│   │       └── application.yaml                          # Application, JPA, Flyway, OpenAPI & security config
 │   └── test/
-│       └── java/                # Unit & integration tests
-│           └── fr/miage/collectivit/salesservice/
-│               ├── controller/
-│               │   └── SalesStatusControllerTest.java
-│               └── SalesServiceApplicationTests.java
-├── docker-compose.yml           # Local multi-container development orchestration
+│       ├── java/                # Unit, integration & Cucumber BDD tests
+│       │   └── fr/miage/collectivit/salesservice/
+│       │       ├── bdd/                                  # Cucumber BDD test suite & step definitions
+│       │       ├── controller/
+│       │       │   └── SalesStatusControllerTest.java
+│       │       ├── repository/
+│       │       │   └── FlywayMigrationIntegrationTest.java
+│       │       ├── security/
+│       │       │   └── SalesSecurityIntegrationTest.java
+│       │       └── SalesServiceApplicationTests.java
+│       └── resources/
+│           ├── features/payment/
+│           │   └── payment_authorization.feature         # Gherkin scenarios for SLE-79 / RG001
+│           └── application.yaml                          # Test profile configuration (H2)
+├── docker-compose.yml           # Local container development orchestration
 ├── Dockerfile                   # Multi-stage container image definition
 ├── mvnw                         # Maven Wrapper script (Linux / macOS)
 ├── mvnw.cmd                     # Maven Wrapper batch script (Windows)

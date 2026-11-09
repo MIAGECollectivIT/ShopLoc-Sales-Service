@@ -35,10 +35,6 @@ public class BankGatewayClient {
         RestClient.builder().baseUrl(bankGatewayUrl).requestFactory(requestFactory).build();
   }
 
-  public BankGatewayClient(RestClient restClient) {
-    this.restClient = restClient;
-  }
-
   public PaymentAuthorizationResponse authorize(PaymentAuthorizationRequest request) {
     RestClientException lastException = null;
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
