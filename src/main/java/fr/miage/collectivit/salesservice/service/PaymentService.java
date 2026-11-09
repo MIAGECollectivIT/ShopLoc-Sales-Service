@@ -23,6 +23,7 @@ public class PaymentService {
 
   private final BankGatewayClient bankGatewayClient;
   private final PaymentTransactionRepository paymentTransactionRepository;
+
   public PaymentAuthorizationResponse authorizePayment(
       PaymentAuthorizationRequest request, String userId) {
     PaymentAuthorizationResponse gatewayResponse = bankGatewayClient.authorize(request);
