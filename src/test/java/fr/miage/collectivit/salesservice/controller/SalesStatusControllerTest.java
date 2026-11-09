@@ -21,7 +21,7 @@ class SalesStatusControllerTest {
   @Test
   void testGetStatusReturnsUp() throws Exception {
     mockMvc
-        .perform(get("/api/v1/sales/status"))
+        .perform(get("/v1/sales/status"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("UP"))
         .andExpect(jsonPath("$.service").value("sales-service"));

@@ -1,0 +1,101 @@
+package fr.miage.collectivit.salesservice.service;
+
+import fr.miage.collectivit.salesservice.client.BankGatewayClient;
+import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
+import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
+import fr.miage.collectivit.salesservice.exception.PaymentGatewayException;
+import fr.miage.collectivit.salesservice.exception.PaymentNotFoundException;
+import fr.miage.collectivit.salesservice.model.PaymentTransaction;
+import fr.miage.collectivit.salesservice.repository.PaymentTransactionRepository;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.Locale;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class PaymentService {
+
+  private final BankGatewayClient bankGatewayClient;
+  private final PaymentTransactionRepository paymentTransactionRepository;
+
+  public PaymentAuthorizationResponse authorizePayment(
+      PaymentAuthorizationRequest request, String userId) {
+    PaymentAuthorizationResponse gatewayResponse = bankGatewayClient.authorize(request);
+
+    if (!PaymentTransaction.RG001_APPROVED_STATUS.equals(gatewayResponse.status())) {
+      throw new PaymentGatewayException(
+          "Bank authorization rejected under RG001 with status: " + gatewayResponse.status());
+    }
+
+    String authorizationCode =
+        hasText(gatewayResponse.authorizationCode())
+            ? gatewayResponse.authorizationCode()
+            : "AUTH-" + UUID.randomUUID();
+    String transactionId =
+        hasText(gatewayResponse.transactionId())
+            ? gatewayResponse.transactionId()
+            : "TXN-" + UUID.randomUUID();
+
+    PaymentTransaction transaction =
+        PaymentTransaction.builder()
+            .transactionId(transactionId)
+            .reference(request.reference().trim())
+            .amount(request.amount())
+            .currency(request.currency().trim().toUpperCase(Locale.ROOT))
+            .status(PaymentTransaction.RG001_APPROVED_STATUS)
+            .authorizationCode(authorizationCode)
+            .paymentMethodToken(request.paymentToken().trim())
+            .userId(userId)
+            .createdAt(parseInstantOrDefault(gatewayResponse.timestamp()))
+            .build();
+
+    PaymentTransaction saved = paymentTransactionRepository.save(transaction);
+
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Payment authorized under RG001: reference={}, transactionId={}, authorizationCode={}, amount={} {}",
+          saved.getReference(),
+          saved.getTransactionId(),
+          saved.getAuthorizationCode(),
+          saved.getAmount(),
+          saved.getCurrency());
+    }
+
+    return PaymentAuthorizationResponse.fromEntity(saved);
+  }
+
+  @Transactional(readOnly = true)
+  public PaymentAuthorizationResponse getByReference(String reference) {
+    return paymentTransactionRepository
+        .findFirstByReferenceOrderByCreatedAtDesc(reference)
+        .map(PaymentAuthorizationResponse::fromEntity)
+        .orElseThrow(() -> new PaymentNotFoundException(reference));
+  }
+
+  private boolean hasText(String value) {
+    return value != null && !value.isBlank();
+  }
+
+  private Instant parseInstantOrDefault(String timestamp) {
+    if (!hasText(timestamp)) {
+      return Instant.now();
+    }
+    try {
+      return Instant.parse(timestamp);
+    } catch (DateTimeParseException ex) {
+      if (log.isInfoEnabled()) {
+        log.info(
+            "Invalid gateway timestamp '{}', falling back to current UTC time: {}",
+            timestamp,
+            ex.getMessage());
+      }
+      return Instant.now();
+    }
+  }
+}

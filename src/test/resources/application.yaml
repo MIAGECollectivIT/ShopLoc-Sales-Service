@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: sales-service-test
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+application:
+  security:
+    jwt:
+      public-key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyoOfnlOHHR9obf8IepJ2Si9pnAnwNP131PG1yIrluKP7Ut0b4+iZC9dQRX7w90xGDoHK/zUdAn3lwY5v8J+kPNAI4EILdOiPVoytQe+Zd6jDOPWmo6IYh7V/pO4kqpgefQFgg6omxEu19cadaUiesxWSiPOnNOFsMpOEfiKLaO4txgfYQ1Amc9h72wktLo8ygUfvHzMJBrM2A5mS/ipjsLr/GnkbD2kTKSsma+xPfH0GFysKMKmAg2/9gXIT2Dmgv+3tMiZKfa908fPbK2iF7FpBs/YRYA+fh1QwlN6OPA0OgD2BOoQ5mTeqoTvcoyK7LkSX3S+9v30LN0V3q5hN/QIDAQAB"
+      secret-key: "dGhpc2lzYXZlcnlzZWNyZXRqd3R1c2Vyc3NlcnZpY2VrZXkxMjM0NTY="
+
+services:
+  users:
+    url: http://localhost:8089
+  bank-gateway:
+    url: http://localhost:8089

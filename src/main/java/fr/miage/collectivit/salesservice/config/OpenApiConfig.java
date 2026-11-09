@@ -7,6 +7,8 @@ import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.swagger.v3.oas.models.servers.Server;
+import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -70,6 +72,10 @@ public class OpenApiConfig {
             "x-auth-type", authType);
 
     return new OpenAPI()
+        .servers(
+            List.of(
+                new Server().url("/api").description("Traefik API Gateway (WAN)"),
+                new Server().url("").description("Direct / Local")))
         .info(
             new Info()
                 .title(title)
