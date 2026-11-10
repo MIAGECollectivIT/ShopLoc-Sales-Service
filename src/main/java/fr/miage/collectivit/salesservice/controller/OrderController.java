@@ -106,11 +106,11 @@ public class OrderController {
   }
 
   @PatchMapping("/{reference}/status")
-  @RequiresRole({UserRole.MERCHANT, UserRole.ADMIN})
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Update order status",
       description =
-          "Transitions the order status (e.g. to PAID once payment is authorized, or CANCELLED). Only merchants and administrators are allowed.")
+          "Transitions the order status (e.g. to PAID once payment is authorized, or CANCELLED). Clients may update their own orders; merchants and administrators may update any.")
   @ApiResponses(
       value = {
         @ApiResponse(responseCode = "200", description = "Order status updated"),
@@ -118,11 +118,17 @@ public class OrderController {
         @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
         @ApiResponse(
             responseCode = "403",
-            description = "Forbidden - Role MERCHANT or ADMIN required"),
+            description = "Forbidden - Role or ownership check failed"),
         @ApiResponse(responseCode = "404", description = "Order not found")
       })
   public ResponseEntity<OrderResponse> updateOrderStatus(
-      @PathVariable String reference, @Valid @RequestBody UpdateOrderStatusRequest requestDto) {
+      @PathVariable String reference,
+      @Valid @RequestBody UpdateOrderStatusRequest requestDto,
+      HttpServletRequest request) {
+    String role = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
+    String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+    OrderResponse existingOrder = orderProcessingService.getOrderByReference(reference);
+    verifyOrderReadAccess(existingOrder, role, userId);
     return ResponseEntity.ok(
         orderProcessingService.updateOrderStatus(reference, requestDto.status()));
   }

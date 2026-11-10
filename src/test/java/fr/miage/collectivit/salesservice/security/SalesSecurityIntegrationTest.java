@@ -95,8 +95,8 @@ class SalesSecurityIntegrationTest {
 
   @Test
   @DisplayName(
-      "PATCH /v1/sales/orders/{ref}/status with CLIENT role -> should return 403 Forbidden")
-  void shouldDenyOrderStatusUpdateForClientRole() throws Exception {
+      "PATCH /v1/sales/orders/{ref}/status with CLIENT role -> should pass security interceptor")
+  void shouldAllowOrderStatusUpdateForClientRole() throws Exception {
     String token = generateTestToken("CLIENT", "client@shoploc.fr", UUID.randomUUID().toString());
     mockMvc
         .perform(
@@ -104,7 +104,7 @@ class SalesSecurityIntegrationTest {
                 .header("Authorization", "Bearer " + token)
                 .contentType("application/json")
                 .content("{\"status\":\"PAID\"}"))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isNotFound());
   }
 
   @Test
