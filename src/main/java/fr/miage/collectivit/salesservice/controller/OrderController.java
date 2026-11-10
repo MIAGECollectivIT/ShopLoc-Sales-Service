@@ -6,6 +6,7 @@ import fr.miage.collectivit.salesservice.dto.UpdateOrderStatusRequest;
 import fr.miage.collectivit.salesservice.exception.ForbiddenException;
 import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
 import fr.miage.collectivit.salesservice.security.RequiresRole;
+import fr.miage.collectivit.salesservice.security.UserRole;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -27,16 +28,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/v1/sales/orders")
-@RequiresRole({"CLIENT", "MERCHANT", "ADMIN"})
 @Tag(
     name = "Orders",
     description = "Multi-store click & collect order lifecycle and lock management (SLE-186)")
 @RequiredArgsConstructor
 public class OrderController {
-
-  private static final String ROLE_ADMIN = "ADMIN";
-  private static final String ROLE_CLIENT = "CLIENT";
-  private static final String ROLE_MERCHANT = "MERCHANT";
 
   private static final String CODE_401 = "401";
   private static final String MSG_UNAUTHORIZED = "Unauthorized - Bearer token required";
@@ -44,6 +40,7 @@ public class OrderController {
   private final OrderProcessingService orderProcessingService;
 
   @PostMapping
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Create multi-store click & collect order",
       description =
@@ -66,6 +63,7 @@ public class OrderController {
   }
 
   @GetMapping
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "List orders for authenticated caller",
       description =
@@ -83,6 +81,7 @@ public class OrderController {
   }
 
   @GetMapping("/{reference}")
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Retrieve order by reference",
       description = "Returns order details, items and merchant breakdowns for the given reference.")
@@ -107,7 +106,7 @@ public class OrderController {
   }
 
   @PatchMapping("/{reference}/status")
-  @RequiresRole({"MERCHANT", "ADMIN"})
+  @RequiresRole({UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Update order status",
       description =
@@ -129,7 +128,8 @@ public class OrderController {
   }
 
   private void verifyOrderReadAccess(OrderResponse order, String role, String userId) {
-    if (ROLE_ADMIN.equalsIgnoreCase(role) || ROLE_MERCHANT.equalsIgnoreCase(role)) {
+    if (UserRole.ADMIN.name().equalsIgnoreCase(role)
+        || UserRole.MERCHANT.name().equalsIgnoreCase(role)) {
       return;
     }
 
@@ -138,7 +138,7 @@ public class OrderController {
       return;
     }
 
-    if (ROLE_CLIENT.equalsIgnoreCase(role)) {
+    if (UserRole.CLIENT.name().equalsIgnoreCase(role)) {
       throw new ForbiddenException("Access denied: you can only consult your own orders");
     }
 

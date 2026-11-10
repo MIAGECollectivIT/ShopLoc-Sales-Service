@@ -10,6 +10,7 @@ import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.model.OrderItem;
 import fr.miage.collectivit.salesservice.model.OrderStatus;
 import fr.miage.collectivit.salesservice.repository.OrderRepository;
+import fr.miage.collectivit.salesservice.security.UserRole;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -37,7 +38,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrderProcessingService {
 
   public static final Duration DEFAULT_LOCK_DURATION = Duration.ofMinutes(30);
-  private static final String ROLE_ADMIN = "ADMIN";
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private final OrderRepository orderRepository;
@@ -111,7 +111,7 @@ public class OrderProcessingService {
   @Transactional(readOnly = true)
   public List<OrderResponse> getOrders(String callerUserId, String callerRole) {
     List<Order> orders;
-    if (ROLE_ADMIN.equalsIgnoreCase(callerRole)) {
+    if (UserRole.ADMIN.name().equalsIgnoreCase(callerRole)) {
       orders = orderRepository.findAll();
     } else if (callerUserId != null && !callerUserId.isBlank()) {
       orders = orderRepository.findByCustomerIdOrderByCreatedAtDesc(callerUserId);

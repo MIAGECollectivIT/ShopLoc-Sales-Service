@@ -6,12 +6,12 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Annotation specifying the roles authorized to invoke an API endpoint. When present on a
- * controller method or class, the security interceptor requires a valid JWT token and verifies that
- * the user's role is among the allowed roles.
+ * Annotation specifying the user roles authorized to invoke an API endpoint. Placed directly on
+ * controller methods, the security interceptor requires a valid JWT token and verifies that the
+ * caller's role matches one of the allowed roles.
  */
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RequiresRole {
-  String[] value();
+  UserRole[] value();
 }

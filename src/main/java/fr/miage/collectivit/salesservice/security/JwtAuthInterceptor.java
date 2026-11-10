@@ -148,12 +148,12 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     if (requiresRole == null) {
       return true;
     }
-    String[] allowedRoles = requiresRole.value();
+    UserRole[] allowedRoles = requiresRole.value();
     if (allowedRoles == null || allowedRoles.length == 0) {
       return true;
     }
-    for (String allowed : allowedRoles) {
-      if (allowed != null && allowed.trim().equalsIgnoreCase(userRole)) {
+    for (UserRole allowed : allowedRoles) {
+      if (allowed != null && allowed.name().equalsIgnoreCase(userRole)) {
         return true;
       }
     }

@@ -4,6 +4,7 @@ import fr.miage.collectivit.salesservice.dto.PhysicalSaleRequest;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleResponse;
 import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
 import fr.miage.collectivit.salesservice.security.RequiresRole;
+import fr.miage.collectivit.salesservice.security.UserRole;
 import fr.miage.collectivit.salesservice.service.PhysicalSaleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -32,7 +33,7 @@ public class PhysicalSaleController {
   private final PhysicalSaleService physicalSaleService;
 
   @PostMapping
-  @RequiresRole({"MERCHANT", "ADMIN"})
+  @RequiresRole({UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Register in-store physical sale checkout",
       description =
