@@ -69,5 +69,7 @@ application:
 services:
   users:
     url: ${USERS_SERVICE_URL:http://users-service:8080}
+  loyalty:
+    url: ${LOYALTY_SERVICE_URL:http://loyalty-service:8080}
   bank-gateway:
     url: ${EXTERNAL_MOCK_SERVICE_URL:http://external-mock-service:8080}

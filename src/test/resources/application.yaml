@@ -29,5 +29,7 @@ application:
 services:
   users:
     url: http://localhost:8089
+  loyalty:
+    url: http://localhost:8089
   bank-gateway:
     url: http://localhost:8089
