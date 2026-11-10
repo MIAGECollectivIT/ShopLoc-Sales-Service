@@ -64,11 +64,15 @@ application:
     auth-type: "Bearer JWT"
     jwt:
       public-key: "${JWT_PUBLIC_KEY:}"
+      private-key: "${JWT_PRIVATE_KEY:}"
+      secret-key: "${JWT_SECRET:}"
     description: "Authenticate using a JWT Bearer token. Enter your token prefixed with 'Bearer ' or simply the token value."
 
 services:
   users:
     url: ${USERS_SERVICE_URL:http://users-service:8080}
+  store:
+    url: ${STORE_SERVICE_URL:http://store-service:8080}
   loyalty:
     url: ${LOYALTY_SERVICE_URL:http://loyalty-service:8080}
   bank-gateway:

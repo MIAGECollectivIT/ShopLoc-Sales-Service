@@ -3,9 +3,12 @@ package fr.miage.collectivit.salesservice.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.dto.CreateOrderItemRequest;
 import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
@@ -32,12 +35,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class OrderProcessingServiceTest {
 
   @Mock private OrderRepository orderRepository;
+  @Mock private StoreClient storeClient;
 
   private OrderProcessingService orderProcessingService;
 
   @BeforeEach
   void setUp() {
-    orderProcessingService = new OrderProcessingService(orderRepository);
+    orderProcessingService = new OrderProcessingService(orderRepository, storeClient);
   }
 
   @Test
@@ -109,6 +113,10 @@ class OrderProcessingServiceTest {
     Order captured = orderCaptor.getValue();
     assertThat(captured.getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
     assertThat(captured.getItems()).hasSize(3);
+
+    verify(storeClient).updateStock(1L, 2L, -2);
+    verify(storeClient).updateStock(1L, 3L, -1);
+    verify(storeClient).updateStock(2L, 6L, -1);
   }
 
   @Test
@@ -214,19 +222,58 @@ class OrderProcessingServiceTest {
   }
 
   @Test
-  @DisplayName("Should update order status to CANCELLED and EXPIRED")
+  @DisplayName("Should update order status to CANCELLED and EXPIRED and release stock")
   void shouldTransitionOrderStatusToCancelledAndExpired() {
+    OrderItem item =
+        OrderItem.builder()
+            .storeId(1L)
+            .productId(10L)
+            .productName("Item")
+            .quantity(3)
+            .unitPrice(new BigDecimal("5.00"))
+            .totalPrice(new BigDecimal("15.00"))
+            .build();
     Order order =
-        Order.builder().orderReference("CMD-CC-2").status(OrderStatus.PENDING_PAYMENT).build();
+        Order.builder()
+            .orderReference("CMD-CC-2")
+            .status(OrderStatus.PENDING_PAYMENT)
+            .items(new ArrayList<>(List.of(item)))
+            .build();
 
     when(orderRepository.findByOrderReference("CMD-CC-2")).thenReturn(Optional.of(order));
     when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
 
     OrderResponse cancelled = orderProcessingService.updateOrderStatus("CMD-CC-2", "CANCELLED");
     assertThat(cancelled.status()).isEqualTo("CANCELLED");
+    verify(storeClient).updateStock(1L, 10L, 3);
 
     OrderResponse expired = orderProcessingService.updateOrderStatus("CMD-CC-2", "EXPIRED");
     assertThat(expired.status()).isEqualTo("EXPIRED");
+  }
+
+  @Test
+  @DisplayName("Should rollback previously reserved items when subsequent reservation fails")
+  void shouldRollbackStockWhenReservationFails() {
+    CreateOrderItemRequest item1 =
+        new CreateOrderItemRequest(1L, "Store 1", 101L, "P1", new BigDecimal("5.00"), 2);
+    CreateOrderItemRequest item2 =
+        new CreateOrderItemRequest(1L, "Store 1", 102L, "P2", new BigDecimal("10.00"), 1);
+
+    CreateOrderRequest request = new CreateOrderRequest(List.of(item1, item2), "CLI-1", null);
+
+    doNothing().when(storeClient).updateStock(1L, 101L, -2);
+    doNothing().when(storeClient).updateStock(1L, 101L, 2);
+    doThrow(new RuntimeException("Insufficient stock on P2"))
+        .when(storeClient)
+        .updateStock(1L, 102L, -1);
+
+    assertThatThrownBy(() -> orderProcessingService.createOrder(request, "user-1", "user@test.fr"))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("Insufficient stock on P2");
+
+    // item1 was reserved (-2), then rolled back (+2)
+    verify(storeClient).updateStock(1L, 101L, -2);
+    verify(storeClient).updateStock(1L, 101L, 2);
   }
 
   @Test

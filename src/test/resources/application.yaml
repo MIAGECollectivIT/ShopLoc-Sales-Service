@@ -29,6 +29,8 @@ application:
 services:
   users:
     url: http://localhost:8089
+  store:
+    url: http://localhost:8089
   loyalty:
     url: http://localhost:8089
   bank-gateway:

@@ -14,6 +14,12 @@ Feature: Multi-Store Click & Collect Order Creation and Amount Locking (SLE-186)
     When an order is created with an empty items list
     Then the HTTP response status should be 400
 
+  Scenario: Reject order creation when item stock is insufficient in Store Service
+    Given an authenticated user with role "CLIENT"
+    And product 99 in store 1 has insufficient stock
+    When an order is created with 1 item of product 99 from store 1 at "10.00" EUR
+    Then the HTTP response status should be 400
+
   Scenario: Reject order creation when unauthenticated
     Given an unauthenticated user
     When an order is created with an empty items list

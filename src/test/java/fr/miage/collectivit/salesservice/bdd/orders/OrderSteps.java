@@ -1,5 +1,8 @@
 package fr.miage.collectivit.salesservice.bdd.orders;
 
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -7,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import fr.miage.collectivit.salesservice.bdd.common.AbstractScenario;
 import fr.miage.collectivit.salesservice.bdd.common.ScenarioContext;
+import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.dto.CreateOrderItemRequest;
 import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.UpdateOrderStatusRequest;
@@ -22,10 +26,14 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.hamcrest.Matchers;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.client.ExpectedCount;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.context.WebApplicationContext;
 
 @RequiredArgsConstructor
@@ -38,15 +46,24 @@ public class OrderSteps extends AbstractScenario {
   private final WebApplicationContext webApplicationContext;
   private final ScenarioContext scenarioContext;
   private final OrderRepository orderRepository;
+  private final StoreClient storeClient;
 
   private MockMvc mockMvc;
   private ObjectMapper objectMapper;
+  private MockRestServiceServer mockStoreServer;
   private String currentOrderReference;
 
   @Before
   public void setUpScenario() {
     mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
     objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+
+    RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8089");
+    mockStoreServer = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
+    mockStoreServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/stock")))
+        .andRespond(withSuccess("{\"status\":\"OK\"}", MediaType.APPLICATION_JSON));
+    storeClient.setRestClient(builder.build());
   }
 
   @Given(
@@ -80,6 +97,51 @@ public class OrderSteps extends AbstractScenario {
   @When("an order is created with an empty items list")
   public void whenOrderCreatedWithEmptyItems() throws Exception {
     CreateOrderRequest request = new CreateOrderRequest(List.of(), null, null);
+
+    var requestBuilder =
+        post(ORDERS_ENDPOINT)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request));
+
+    if (scenarioContext.getJwtToken() != null) {
+      requestBuilder.header(HEADER_AUTHORIZATION, BEARER_PREFIX + scenarioContext.getJwtToken());
+    }
+
+    ResultActions result = mockMvc.perform(requestBuilder);
+    scenarioContext.setLastResult(result);
+  }
+
+  @Given("product {long} in store {long} has insufficient stock")
+  public void givenProductHasInsufficientStock(Long productId, Long storeId) {
+    RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8089");
+    mockStoreServer = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
+    mockStoreServer
+        .expect(
+            ExpectedCount.manyTimes(),
+            requestTo(
+                Matchers.containsString(
+                    "/stores/" + storeId + "/products/" + productId + "/stock")))
+        .andRespond(
+            withBadRequest()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"error\":\"Insufficient Stock\"}"));
+    storeClient.setRestClient(builder.build());
+  }
+
+  @When("an order is created with {int} item of product {long} from store {long} at {string} EUR")
+  public void whenOrderCreatedWithSingleItem(
+      int qty, Long productId, Long storeId, String unitPrice) throws Exception {
+    CreateOrderItemRequest item =
+        new CreateOrderItemRequest(
+            storeId,
+            "Store #" + storeId,
+            productId,
+            "Product " + productId,
+            new BigDecimal(unitPrice),
+            qty);
+
+    CreateOrderRequest request =
+        new CreateOrderRequest(List.of(item), "CLI-BDD-01", "client@bdd.fr");
 
     var requestBuilder =
         post(ORDERS_ENDPOINT)

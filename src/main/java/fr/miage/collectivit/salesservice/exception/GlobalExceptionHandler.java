@@ -49,20 +49,25 @@ public class GlobalExceptionHandler {
     return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage());
   }
 
-  @ExceptionHandler(PaymentNotFoundException.class)
-  public ResponseEntity<Map<String, Object>> handlePaymentNotFound(PaymentNotFoundException ex) {
+  @ExceptionHandler({
+    PaymentNotFoundException.class,
+    PhysicalSaleNotFoundException.class,
+    OrderNotFoundException.class
+  })
+  public ResponseEntity<Map<String, Object>> handleResourceNotFound(RuntimeException ex) {
     return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
   }
 
-  @ExceptionHandler(PhysicalSaleNotFoundException.class)
-  public ResponseEntity<Map<String, Object>> handlePhysicalSaleNotFound(
-      PhysicalSaleNotFoundException ex) {
-    return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+  @ExceptionHandler(InsufficientStockException.class)
+  public ResponseEntity<Map<String, Object>> handleInsufficientStock(
+      InsufficientStockException ex) {
+    return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
   }
 
-  @ExceptionHandler(OrderNotFoundException.class)
-  public ResponseEntity<Map<String, Object>> handleOrderNotFound(OrderNotFoundException ex) {
-    return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+  @ExceptionHandler(StoreServiceUnavailableException.class)
+  public ResponseEntity<Map<String, Object>> handleStoreServiceUnavailable(
+      StoreServiceUnavailableException ex) {
+    return buildResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
   }
 
   @ExceptionHandler(PaymentGatewayException.class)

@@ -1,5 +1,6 @@
 package fr.miage.collectivit.salesservice.service;
 
+import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.dto.CreateOrderItemRequest;
 import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderItemResponse;
@@ -34,13 +35,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@SuppressWarnings("PMD.LawOfDemeter")
+@SuppressWarnings({"PMD.LawOfDemeter", "PMD.CouplingBetweenObjects"})
 public class OrderProcessingService {
 
   public static final Duration DEFAULT_LOCK_DURATION = Duration.ofMinutes(30);
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private final OrderRepository orderRepository;
+  private final StoreClient storeClient;
 
   @Transactional
   public OrderResponse createOrder(
@@ -48,6 +50,8 @@ public class OrderProcessingService {
     if (request.items() == null || request.items().isEmpty()) {
       throw new IllegalArgumentException("Order must contain at least one item");
     }
+
+    reserveStock(request.items());
 
     String effectiveEmail =
         (customerEmail != null && !customerEmail.isBlank())
@@ -150,6 +154,8 @@ public class OrderProcessingService {
       throw new IllegalArgumentException("Invalid order status: " + newStatus, ex);
     }
 
+    releaseStockIfCancelledOrExpired(order, status);
+
     order.setStatus(status);
     order.setUpdatedAt(Instant.now());
     Order updated = orderRepository.save(order);
@@ -218,9 +224,81 @@ public class OrderProcessingService {
         itemResponses);
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException")
+  private void reserveStock(List<CreateOrderItemRequest> items) {
+    List<ReservedItem> reservedItems = new ArrayList<>();
+    try {
+      for (CreateOrderItemRequest itemReq : items) {
+        storeClient.updateStock(itemReq.storeId(), itemReq.productId(), -itemReq.quantity());
+        reservedItems.add(
+            new ReservedItem(itemReq.storeId(), itemReq.productId(), itemReq.quantity()));
+      }
+    } catch (RuntimeException ex) {
+      rollbackReservedStock(reservedItems);
+      throw ex;
+    }
+  }
+
+  @SuppressWarnings("PMD.AvoidCatchingGenericException")
+  private void rollbackReservedStock(List<ReservedItem> reservedItems) {
+    if (log.isWarnEnabled()) {
+      log.warn("Stock reservation failed. Rolling back {} items.", reservedItems.size());
+    }
+    for (ReservedItem reserved : reservedItems) {
+      try {
+        storeClient.updateStock(reserved.storeId(), reserved.productId(), reserved.quantity());
+      } catch (RuntimeException rollbackEx) {
+        if (log.isErrorEnabled()) {
+          log.error(
+              "Rollback failed for store {} product {}: {}",
+              reserved.storeId(),
+              reserved.productId(),
+              rollbackEx.getMessage());
+        }
+      }
+    }
+  }
+
+  @SuppressWarnings("PMD.AvoidCatchingGenericException")
+  private void releaseStockIfCancelledOrExpired(Order order, OrderStatus newStatus) {
+    OrderStatus previousStatus = order.getStatus();
+    boolean isCancelledOrExpired =
+        newStatus == OrderStatus.CANCELLED || newStatus == OrderStatus.EXPIRED;
+    boolean wasPendingOrPaid =
+        previousStatus == OrderStatus.PENDING_PAYMENT || previousStatus == OrderStatus.PAID;
+
+    if (!wasPendingOrPaid || !isCancelledOrExpired) {
+      return;
+    }
+
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Order {} transitioning from {} to {}; releasing reserved stock.",
+          order.getOrderReference(),
+          previousStatus,
+          newStatus);
+    }
+    for (OrderItem item : order.getItems()) {
+      try {
+        storeClient.updateStock(item.getStoreId(), item.getProductId(), item.getQuantity());
+      } catch (RuntimeException ex) {
+        if (log.isErrorEnabled()) {
+          log.error(
+              "Failed to release stock for order {} store {} product {}: {}",
+              order.getOrderReference(),
+              item.getStoreId(),
+              item.getProductId(),
+              ex.getMessage());
+        }
+      }
+    }
+  }
+
   private String generateOrderReference() {
     String datePart = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
     int randomPart = 1000 + RANDOM.nextInt(9000);
     return "CMD-CC-" + datePart + "-" + randomPart;
   }
+
+  private record ReservedItem(Long storeId, Long productId, int quantity) {}
 }
