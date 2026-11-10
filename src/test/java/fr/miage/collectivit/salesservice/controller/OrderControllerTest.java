@@ -197,4 +197,82 @@ class OrderControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("PAID"));
   }
+
+  @Test
+  @DisplayName(
+      "PATCH /v1/sales/orders/{ref}/status should return 400 Bad Request when status is invalid")
+  void shouldReturn400WhenStatusInvalid() throws Exception {
+    UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("INVALID_STATUS");
+
+    when(orderProcessingService.updateOrderStatus(eq("CMD-CC-20261110-9999"), eq("INVALID_STATUS")))
+        .thenThrow(new IllegalArgumentException("Invalid order status: INVALID_STATUS"));
+
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(patchRequest)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("Invalid order status: INVALID_STATUS"));
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/orders should return 400 Bad Request when storeId is null")
+  void shouldReturn400WhenStoreIdNull() throws Exception {
+    CreateOrderItemRequest invalidItem =
+        new CreateOrderItemRequest(null, "Store", 2L, "Product", new BigDecimal("5.00"), 1);
+    CreateOrderRequest request = new CreateOrderRequest(List.of(invalidItem), null, null);
+
+    mockMvc
+        .perform(
+            post("/v1/sales/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error").value("Validation Failed"));
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/orders should return 400 Bad Request when productId is null")
+  void shouldReturn400WhenProductIdNull() throws Exception {
+    CreateOrderItemRequest invalidItem =
+        new CreateOrderItemRequest(1L, "Store", null, "Product", new BigDecimal("5.00"), 1);
+    CreateOrderRequest request = new CreateOrderRequest(List.of(invalidItem), null, null);
+
+    mockMvc
+        .perform(
+            post("/v1/sales/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error").value("Validation Failed"));
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/orders should return 400 Bad Request when productName is blank")
+  void shouldReturn400WhenProductNameBlank() throws Exception {
+    CreateOrderItemRequest invalidItem =
+        new CreateOrderItemRequest(1L, "Store", 2L, "   ", new BigDecimal("5.00"), 1);
+    CreateOrderRequest request = new CreateOrderRequest(List.of(invalidItem), null, null);
+
+    mockMvc
+        .perform(
+            post("/v1/sales/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error").value("Validation Failed"));
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/orders should return 400 Bad Request when payload is malformed JSON")
+  void shouldReturn400WhenMalformedJson() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/sales/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{not-a-valid-json}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("Malformed JSON request payload"));
+  }
 }

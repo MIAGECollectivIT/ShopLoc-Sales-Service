@@ -212,4 +212,35 @@ class OrderProcessingServiceTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Invalid order status");
   }
+
+  @Test
+  @DisplayName("Should update order status to CANCELLED and EXPIRED")
+  void shouldTransitionOrderStatusToCancelledAndExpired() {
+    Order order =
+        Order.builder().orderReference("CMD-CC-2").status(OrderStatus.PENDING_PAYMENT).build();
+
+    when(orderRepository.findByOrderReference("CMD-CC-2")).thenReturn(Optional.of(order));
+    when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+    OrderResponse cancelled = orderProcessingService.updateOrderStatus("CMD-CC-2", "CANCELLED");
+    assertThat(cancelled.status()).isEqualTo("CANCELLED");
+
+    OrderResponse expired = orderProcessingService.updateOrderStatus("CMD-CC-2", "EXPIRED");
+    assertThat(expired.status()).isEqualTo("EXPIRED");
+  }
+
+  @Test
+  @DisplayName("Should fallback to payload customerEmail when authenticated email is null or blank")
+  void shouldFallbackToPayloadEmail() {
+    CreateOrderItemRequest item =
+        new CreateOrderItemRequest(1L, "Store", 2L, "Product", new BigDecimal("10.00"), 1);
+    CreateOrderRequest request = new CreateOrderRequest(List.of(item), null, "guest@fallback.com");
+
+    when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+    OrderResponse response = orderProcessingService.createOrder(request, null, "   ");
+
+    assertThat(response.customerId()).isNull();
+    assertThat(response.customerEmail()).isEqualTo("guest@fallback.com");
+  }
 }
