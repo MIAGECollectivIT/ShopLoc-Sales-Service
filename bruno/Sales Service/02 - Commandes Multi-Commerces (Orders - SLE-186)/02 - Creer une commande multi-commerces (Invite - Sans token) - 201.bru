@@ -1,0 +1,39 @@
+meta {
+  name: 02 - Creer une commande multi-commerces (Invite - Sans token) - 201
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/sales/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "customerEmail": "invite.client@example.com",
+    "items": [
+      {
+        "storeId": 3,
+        "storeName": "Épicerie Fine Les Saveurs du Terroir",
+        "productId": 10,
+        "productName": "Huile d'Olive Vierge Extra Bio AOP",
+        "unitPrice": 14.50,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.orderReference: isDefined
+  res.body.status: eq PENDING_PAYMENT
+  res.body.totalAmount: eq 14.5
+  res.body.customerEmail: eq "invite.client@example.com"
+}

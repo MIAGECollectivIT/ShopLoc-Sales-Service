@@ -1,0 +1,17 @@
+meta {
+  name: 01 - Verifier le statut du service (Public) - 200
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/v1/sales/status
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq "UP"
+  res.body.service: eq "sales-service"
+}

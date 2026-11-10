@@ -1,0 +1,26 @@
+meta {
+  name: 01 - Rejet creation commande panier vide - 400
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/sales/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "items": []
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.error: eq "Validation Failed"
+}

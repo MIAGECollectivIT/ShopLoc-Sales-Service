@@ -1,0 +1,17 @@
+meta {
+  name: 02 - Consulter une transaction de paiement par reference - 200
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/v1/sales/payments/{{orderReference}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.reference: eq {{orderReference}}
+  res.body.status: eq APPROVED
+}

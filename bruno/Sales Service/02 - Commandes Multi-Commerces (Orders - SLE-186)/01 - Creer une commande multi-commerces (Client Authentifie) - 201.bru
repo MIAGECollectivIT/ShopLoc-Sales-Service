@@ -1,0 +1,69 @@
+meta {
+  name: 01 - Creer une commande multi-commerces (Client Authentifie) - 201
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/sales/orders
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{clientToken}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "clientCode": "CLI-99482",
+    "customerEmail": "pierre.dufour@shop-loc.fr",
+    "items": [
+      {
+        "storeId": 1,
+        "storeName": "Boulangerie Le Moulin de Lille",
+        "productId": 2,
+        "productName": "Baguette de Tradition Française",
+        "unitPrice": 1.35,
+        "quantity": 2
+      },
+      {
+        "storeId": 1,
+        "storeName": "Boulangerie Le Moulin de Lille",
+        "productId": 3,
+        "productName": "Croissant au Beurre AOP",
+        "unitPrice": 1.60,
+        "quantity": 1
+      },
+      {
+        "storeId": 2,
+        "storeName": "Librairie Le Furet des Livres",
+        "productId": 6,
+        "productName": "Roman Best-Seller Broché",
+        "unitPrice": 22.00,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+script:post-response {
+  if (res.status === 201 && res.body && res.body.orderReference) {
+    bru.setEnvVar("orderReference", res.body.orderReference);
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.orderReference: isDefined
+  res.body.status: eq PENDING_PAYMENT
+  res.body.currency: eq EUR
+  res.body.totalAmount: eq 26.3
+  res.body.storeSummaries: isDefined
+  res.body.storeSummaries.length: eq 2
+  res.body.expiresAt: isDefined
+}

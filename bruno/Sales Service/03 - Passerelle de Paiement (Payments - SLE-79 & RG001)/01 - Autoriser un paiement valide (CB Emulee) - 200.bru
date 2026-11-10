@@ -1,0 +1,31 @@
+meta {
+  name: 01 - Autoriser un paiement valide (CB Emulee) - 200
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/sales/payments/authorize
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "amount": 26.30,
+    "currency": "EUR",
+    "reference": "{{orderReference}}",
+    "paymentToken": "tok_visa_4242"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.reference: isDefined
+  res.body.status: eq APPROVED
+  res.body.authorizationCode: isDefined
+}
