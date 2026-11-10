@@ -1,0 +1,19 @@
+Feature: Multi-Store Click & Collect Order Creation and Amount Locking (SLE-186)
+
+  Scenario: Successfully create a multi-store click and collect order with calculated totals
+    Given a customer creates a multi-store order with 2 items from store 1 at "1.35" EUR and 1 item from store 2 at "22.00" EUR
+    Then the HTTP response status should be 201
+    And the response JSON field "status" should equal "PENDING_PAYMENT"
+    And the response JSON field "currency" should equal "EUR"
+    And the response JSON field "totalAmount" should equal "24.7"
+    And the response JSON field "orderReference" should not be empty
+
+  Scenario: Reject order creation when item list is empty
+    When an order is created with an empty items list
+    Then the HTTP response status should be 400
+
+  Scenario: Update order status to PAID after payment authorization
+    Given an existing order with status "PENDING_PAYMENT"
+    When the order status is updated to "PAID"
+    Then the HTTP response status should be 200
+    And the response JSON field "status" should equal "PAID"

@@ -55,6 +55,11 @@ public class GlobalExceptionHandler {
     return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
   }
 
+  @ExceptionHandler(OrderNotFoundException.class)
+  public ResponseEntity<Map<String, Object>> handleOrderNotFound(OrderNotFoundException ex) {
+    return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+  }
+
   @ExceptionHandler(PaymentGatewayException.class)
   public ResponseEntity<Map<String, Object>> handlePaymentGatewayFailure(
       PaymentGatewayException ex) {

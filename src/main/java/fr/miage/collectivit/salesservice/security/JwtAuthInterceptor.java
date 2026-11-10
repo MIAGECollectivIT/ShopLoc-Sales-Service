@@ -28,6 +28,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
   private static final String SWAGGER_PREFIX = "/swagger-ui";
   private static final String ACTUATOR_PREFIX = "/actuator";
   private static final String PAYMENTS_PREFIX = "/v1/sales/payments";
+  private static final String ORDERS_PREFIX = "/v1/sales/orders";
 
   private final JwtValidatorService jwtValidatorService;
 
@@ -89,6 +90,6 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
   }
 
   private boolean isOptionalAuthPath(String path) {
-    return path.startsWith(PAYMENTS_PREFIX);
+    return path.startsWith(PAYMENTS_PREFIX) || path.startsWith(ORDERS_PREFIX);
   }
 }
