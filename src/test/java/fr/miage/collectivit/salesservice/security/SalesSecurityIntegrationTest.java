@@ -1,6 +1,8 @@
 package fr.miage.collectivit.salesservice.security;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -81,5 +83,54 @@ class SalesSecurityIntegrationTest {
     mockMvc
         .perform(get("/v1/sales/status").header("Authorization", "Bearer " + token))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/orders without token -> should return 401 Unauthorized")
+  void shouldDenyOrderCreationWithoutToken() throws Exception {
+    mockMvc
+        .perform(post("/v1/sales/orders").contentType("application/json").content("{\"items\":[]}"))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName(
+      "PATCH /v1/sales/orders/{ref}/status with CLIENT role -> should return 403 Forbidden")
+  void shouldDenyOrderStatusUpdateForClientRole() throws Exception {
+    String token = generateTestToken("CLIENT", "client@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-TEST-1234/status")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"status\":\"PAID\"}"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("PATCH /v1/sales/orders/{ref}/status with MERCHANT role -> should pass security")
+  void shouldAllowOrderStatusUpdateForMerchantRole() throws Exception {
+    String token =
+        generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-TEST-1234/status")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"status\":\"PAID\"}"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/physical with CLIENT role -> should return 403 Forbidden")
+  void shouldDenyPhysicalSaleForClientRole() throws Exception {
+    String token = generateTestToken("CLIENT", "client@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            post("/v1/sales/physical")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"storeId\":1,\"amount\":10.0}"))
+        .andExpect(status().isForbidden());
   }
 }

@@ -2,8 +2,8 @@ package fr.miage.collectivit.salesservice.controller;
 
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleRequest;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleResponse;
-import fr.miage.collectivit.salesservice.exception.ForbiddenException;
 import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
+import fr.miage.collectivit.salesservice.security.RequiresRole;
 import fr.miage.collectivit.salesservice.service.PhysicalSaleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -32,6 +32,7 @@ public class PhysicalSaleController {
   private final PhysicalSaleService physicalSaleService;
 
   @PostMapping
+  @RequiresRole({"MERCHANT", "ADMIN"})
   @Operation(
       summary = "Register in-store physical sale checkout",
       description =
@@ -49,12 +50,6 @@ public class PhysicalSaleController {
       })
   public ResponseEntity<PhysicalSaleResponse> recordPhysicalSale(
       @Valid @RequestBody PhysicalSaleRequest requestDto, HttpServletRequest request) {
-    String role = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
-    if (role == null || (!"MERCHANT".equalsIgnoreCase(role) && !"ADMIN".equalsIgnoreCase(role))) {
-      throw new ForbiddenException(
-          "Access denied: only merchants and administrators can register in-store physical sales");
-    }
-
     String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
     PhysicalSaleResponse response = physicalSaleService.recordPhysicalSale(requestDto, userId);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);

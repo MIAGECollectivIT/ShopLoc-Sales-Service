@@ -1,6 +1,7 @@
 package fr.miage.collectivit.salesservice.controller;
 
 import fr.miage.collectivit.salesservice.config.OpenApiConfig;
+import fr.miage.collectivit.salesservice.security.RequiresRole;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/v1/sales")
 @Tag(name = "Sales Status", description = "Operations related to sales service status")
+@RequiresRole({"CLIENT", "MERCHANT", "ADMIN"})
 public class SalesStatusController {
 
   @GetMapping("/status")

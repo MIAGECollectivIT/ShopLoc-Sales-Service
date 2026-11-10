@@ -295,24 +295,6 @@ class OrderControllerTest {
   }
 
   @Test
-  @DisplayName("PATCH /v1/sales/orders/{ref}/status should return 403 Forbidden for CLIENT")
-  void shouldReturn403WhenClientAttemptsPatchStatus() throws Exception {
-    UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("PAID");
-
-    mockMvc
-        .perform(
-            patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
-                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
-                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(patchRequest)))
-        .andExpect(status().isForbidden())
-        .andExpect(
-            jsonPath("$.message")
-                .value("Access denied: only merchants and administrators can update order status"));
-  }
-
-  @Test
   @DisplayName(
       "PATCH /v1/sales/orders/{ref}/status should return 400 Bad Request when status is invalid")
   void shouldReturn400WhenStatusInvalid() throws Exception {

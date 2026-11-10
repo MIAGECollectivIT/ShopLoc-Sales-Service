@@ -5,6 +5,7 @@ import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.dto.UpdateOrderStatusRequest;
 import fr.miage.collectivit.salesservice.exception.ForbiddenException;
 import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
+import fr.miage.collectivit.salesservice.security.RequiresRole;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/v1/sales/orders")
+@RequiresRole({"CLIENT", "MERCHANT", "ADMIN"})
 @Tag(
     name = "Orders",
     description = "Multi-store click & collect order lifecycle and lock management (SLE-186)")
@@ -105,6 +107,7 @@ public class OrderController {
   }
 
   @PatchMapping("/{reference}/status")
+  @RequiresRole({"MERCHANT", "ADMIN"})
   @Operation(
       summary = "Update order status",
       description =
@@ -120,15 +123,7 @@ public class OrderController {
         @ApiResponse(responseCode = "404", description = "Order not found")
       })
   public ResponseEntity<OrderResponse> updateOrderStatus(
-      @PathVariable String reference,
-      @Valid @RequestBody UpdateOrderStatusRequest requestDto,
-      HttpServletRequest request) {
-    String role = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
-    if (!ROLE_MERCHANT.equalsIgnoreCase(role) && !ROLE_ADMIN.equalsIgnoreCase(role)) {
-      throw new ForbiddenException(
-          "Access denied: only merchants and administrators can update order status");
-    }
-
+      @PathVariable String reference, @Valid @RequestBody UpdateOrderStatusRequest requestDto) {
     return ResponseEntity.ok(
         orderProcessingService.updateOrderStatus(reference, requestDto.status()));
   }

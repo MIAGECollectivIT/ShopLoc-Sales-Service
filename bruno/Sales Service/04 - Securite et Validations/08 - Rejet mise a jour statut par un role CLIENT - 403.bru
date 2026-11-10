@@ -23,5 +23,6 @@ body:json {
 
 assert {
   res.status: eq 403
-  res.body.message: eq "Access denied: only merchants and administrators can update order status"
+  res.body.message: contains "Access denied"
 }
+
