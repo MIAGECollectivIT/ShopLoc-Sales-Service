@@ -9,11 +9,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 
-@DisplayName("Flyway Migration V1 Integration Test")
+@DisplayName("Flyway Migration Integration Test")
 class FlywayMigrationIntegrationTest {
 
   @Test
-  @DisplayName("Should execute V1 payment_transactions migration successfully")
+  @DisplayName("Should execute V1 and V2 migrations successfully")
   void shouldExecuteFlywayMigrationSuccessfully() {
     DataSource dataSource =
         DataSourceBuilder.create()
@@ -32,7 +32,7 @@ class FlywayMigrationIntegrationTest {
 
     MigrateResult result = flyway.migrate();
 
-    assertThat(result.migrationsExecuted).isGreaterThanOrEqualTo(1);
-    assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
+    assertThat(result.migrationsExecuted).isGreaterThanOrEqualTo(2);
+    assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
   }
 }
