@@ -64,3 +64,4 @@ bruno/Sales Service/
 > ```bash
 > git update-index --skip-worktree "bruno/Sales Service/00 - Authentification (Users Service)/"*
 > ```
+

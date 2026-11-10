@@ -19,6 +19,7 @@ import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
 import fr.miage.collectivit.salesservice.dto.UpdateOrderStatusRequest;
 import fr.miage.collectivit.salesservice.exception.GlobalExceptionHandler;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
+import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -128,7 +129,7 @@ class OrderControllerTest {
   }
 
   @Test
-  @DisplayName("GET /v1/sales/orders/{ref} should return 200 OK with order payload")
+  @DisplayName("GET /v1/sales/orders/{ref} should return 200 OK for owner CLIENT")
   void shouldGetOrderByReference() throws Exception {
     OrderResponse response =
         new OrderResponse(
@@ -148,10 +149,102 @@ class OrderControllerTest {
     when(orderProcessingService.getOrderByReference("CMD-CC-20261110-9999")).thenReturn(response);
 
     mockMvc
-        .perform(get("/v1/sales/orders/CMD-CC-20261110-9999"))
+        .perform(
+            get("/v1/sales/orders/CMD-CC-20261110-9999")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.orderReference").value("CMD-CC-20261110-9999"))
         .andExpect(jsonPath("$.status").value("PENDING_PAYMENT"));
+  }
+
+  @Test
+  @DisplayName(
+      "GET /v1/sales/orders/{ref} should return 403 Forbidden when CLIENT accesses another's order")
+  void shouldReturn403WhenClientAccessesAnotherOrder() throws Exception {
+    OrderResponse response =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-other",
+            "other@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PENDING_PAYMENT",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    when(orderProcessingService.getOrderByReference("CMD-CC-20261110-9999")).thenReturn(response);
+
+    mockMvc
+        .perform(
+            get("/v1/sales/orders/CMD-CC-20261110-9999")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1"))
+        .andExpect(status().isForbidden())
+        .andExpect(
+            jsonPath("$.message").value("Access denied: you can only consult your own orders"));
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/orders/{ref} should return 200 OK for ADMIN regardless of customerId")
+  void shouldGetOrderByReferenceForAdmin() throws Exception {
+    OrderResponse response =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-other",
+            "other@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PENDING_PAYMENT",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    when(orderProcessingService.getOrderByReference("CMD-CC-20261110-9999")).thenReturn(response);
+
+    mockMvc
+        .perform(
+            get("/v1/sales/orders/CMD-CC-20261110-9999")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "ADMIN")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "admin-1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.orderReference").value("CMD-CC-20261110-9999"));
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/orders should return order list for authenticated caller")
+  void shouldListOrdersForCaller() throws Exception {
+    OrderResponse response =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PENDING_PAYMENT",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    when(orderProcessingService.getOrders("cust-1", "CLIENT")).thenReturn(List.of(response));
+
+    mockMvc
+        .perform(
+            get("/v1/sales/orders")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].orderReference").value("CMD-CC-20261110-9999"));
   }
 
   @Test
@@ -161,13 +254,14 @@ class OrderControllerTest {
         .thenThrow(new OrderNotFoundException("Order with reference UNKNOWN not found"));
 
     mockMvc
-        .perform(get("/v1/sales/orders/UNKNOWN"))
+        .perform(
+            get("/v1/sales/orders/UNKNOWN").requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "ADMIN"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.message").value("Order with reference UNKNOWN not found"));
   }
 
   @Test
-  @DisplayName("PATCH /v1/sales/orders/{ref}/status should return 200 OK with updated order")
+  @DisplayName("PATCH /v1/sales/orders/{ref}/status should return 200 OK for MERCHANT")
   void shouldUpdateOrderStatus() throws Exception {
     UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("PAID");
 
@@ -192,10 +286,30 @@ class OrderControllerTest {
     mockMvc
         .perform(
             patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "MERCHANT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "merchant-1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(patchRequest)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("PAID"));
+  }
+
+  @Test
+  @DisplayName("PATCH /v1/sales/orders/{ref}/status should return 403 Forbidden for CLIENT")
+  void shouldReturn403WhenClientAttemptsPatchStatus() throws Exception {
+    UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("PAID");
+
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(patchRequest)))
+        .andExpect(status().isForbidden())
+        .andExpect(
+            jsonPath("$.message")
+                .value("Access denied: only merchants and administrators can update order status"));
   }
 
   @Test
@@ -210,6 +324,7 @@ class OrderControllerTest {
     mockMvc
         .perform(
             patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "ADMIN")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(patchRequest)))
         .andExpect(status().isBadRequest())

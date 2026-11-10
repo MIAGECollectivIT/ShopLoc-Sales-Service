@@ -32,6 +32,8 @@ import org.springframework.web.context.WebApplicationContext;
 public class OrderSteps extends AbstractScenario {
 
   private static final String ORDERS_ENDPOINT = "/v1/sales/orders";
+  private static final String HEADER_AUTHORIZATION = "Authorization";
+  private static final String BEARER_PREFIX = "Bearer ";
 
   private final WebApplicationContext webApplicationContext;
   private final ScenarioContext scenarioContext;
@@ -62,12 +64,16 @@ public class OrderSteps extends AbstractScenario {
     CreateOrderRequest request =
         new CreateOrderRequest(List.of(item1, item2), "CLI-BDD-01", "bdd-customer@example.com");
 
-    ResultActions result =
-        mockMvc.perform(
-            post(ORDERS_ENDPOINT)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)));
+    var requestBuilder =
+        post(ORDERS_ENDPOINT)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request));
 
+    if (scenarioContext.getJwtToken() != null) {
+      requestBuilder.header(HEADER_AUTHORIZATION, BEARER_PREFIX + scenarioContext.getJwtToken());
+    }
+
+    ResultActions result = mockMvc.perform(requestBuilder);
     scenarioContext.setLastResult(result);
   }
 
@@ -75,20 +81,25 @@ public class OrderSteps extends AbstractScenario {
   public void whenOrderCreatedWithEmptyItems() throws Exception {
     CreateOrderRequest request = new CreateOrderRequest(List.of(), null, null);
 
-    ResultActions result =
-        mockMvc.perform(
-            post(ORDERS_ENDPOINT)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)));
+    var requestBuilder =
+        post(ORDERS_ENDPOINT)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request));
 
+    if (scenarioContext.getJwtToken() != null) {
+      requestBuilder.header(HEADER_AUTHORIZATION, BEARER_PREFIX + scenarioContext.getJwtToken());
+    }
+
+    ResultActions result = mockMvc.perform(requestBuilder);
     scenarioContext.setLastResult(result);
   }
 
   @Given("an existing order with status {string}")
   public void givenExistingOrderWithStatus(String initialStatus) {
+    String ref = "CMD-CC-BDD-" + java.util.UUID.randomUUID();
     Order order =
         Order.builder()
-            .orderReference("CMD-CC-BDD-12345")
+            .orderReference(ref)
             .customerId("cust-bdd")
             .customerEmail("client@bdd.fr")
             .totalAmount(new BigDecimal("15.00"))
@@ -121,12 +132,16 @@ public class OrderSteps extends AbstractScenario {
   public void whenOrderStatusIsUpdated(String targetStatus) throws Exception {
     UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest(targetStatus);
 
-    ResultActions result =
-        mockMvc.perform(
-            patch(ORDERS_ENDPOINT + "/" + currentOrderReference + "/status")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(patchRequest)));
+    var requestBuilder =
+        patch(ORDERS_ENDPOINT + "/" + currentOrderReference + "/status")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(patchRequest));
 
+    if (scenarioContext.getJwtToken() != null) {
+      requestBuilder.header(HEADER_AUTHORIZATION, BEARER_PREFIX + scenarioContext.getJwtToken());
+    }
+
+    ResultActions result = mockMvc.perform(requestBuilder);
     scenarioContext.setLastResult(result);
   }
 }

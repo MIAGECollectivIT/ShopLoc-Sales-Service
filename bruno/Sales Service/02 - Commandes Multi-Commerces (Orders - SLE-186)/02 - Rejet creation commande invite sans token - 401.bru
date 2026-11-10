@@ -1,5 +1,5 @@
 meta {
-  name: 02 - Creer une commande multi-commerces (Invite - Sans token) - 201
+  name: 02 - Rejet creation commande invite sans token - 401
   type: http
   seq: 2
 }
@@ -31,9 +31,5 @@ body:json {
 }
 
 assert {
-  res.status: eq 201
-  res.body.orderReference: isDefined
-  res.body.status: eq PENDING_PAYMENT
-  res.body.totalAmount: eq 14.5
-  res.body.customerEmail: eq "invite.client@example.com"
+  res.status: eq 401
 }

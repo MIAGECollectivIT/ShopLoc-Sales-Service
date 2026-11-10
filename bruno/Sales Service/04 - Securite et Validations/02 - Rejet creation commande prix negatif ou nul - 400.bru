@@ -12,6 +12,7 @@ post {
 
 headers {
   Content-Type: application/json
+  Authorization: Bearer {{clientToken}}
 }
 
 body:json {
@@ -32,3 +33,4 @@ assert {
   res.status: eq 400
   res.body.error: eq "Validation Failed"
 }
+

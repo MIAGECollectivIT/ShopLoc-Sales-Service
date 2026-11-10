@@ -37,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrderProcessingService {
 
   public static final Duration DEFAULT_LOCK_DURATION = Duration.ofMinutes(30);
+  private static final String ROLE_ADMIN = "ADMIN";
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private final OrderRepository orderRepository;
@@ -105,6 +106,19 @@ public class OrderProcessingService {
     }
 
     return mapToResponse(saved);
+  }
+
+  @Transactional(readOnly = true)
+  public List<OrderResponse> getOrders(String callerUserId, String callerRole) {
+    List<Order> orders;
+    if (ROLE_ADMIN.equalsIgnoreCase(callerRole)) {
+      orders = orderRepository.findAll();
+    } else if (callerUserId != null && !callerUserId.isBlank()) {
+      orders = orderRepository.findByCustomerIdOrderByCreatedAtDesc(callerUserId);
+    } else {
+      orders = List.of();
+    }
+    return orders.stream().map(this::mapToResponse).toList();
   }
 
   @Transactional(readOnly = true)
