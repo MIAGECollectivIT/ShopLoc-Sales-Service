@@ -78,6 +78,14 @@ public class PaymentService {
         .orElseThrow(() -> new PaymentNotFoundException(reference));
   }
 
+  @Transactional(readOnly = true)
+  public String getUserIdByReference(String reference) {
+    return paymentTransactionRepository
+        .findFirstByReferenceOrderByCreatedAtDesc(reference)
+        .map(PaymentTransaction::getUserId)
+        .orElse(null);
+  }
+
   private boolean hasText(String value) {
     return value != null && !value.isBlank();
   }

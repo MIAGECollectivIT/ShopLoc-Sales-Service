@@ -1,0 +1,35 @@
+meta {
+  name: 02 - Rejet creation commande invite sans token - 401
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/sales/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "customerEmail": "invite.client@example.com",
+    "items": [
+      {
+        "storeId": 3,
+        "storeName": "Épicerie Fine Les Saveurs du Terroir",
+        "productId": 10,
+        "productName": "Huile d'Olive Vierge Extra Bio AOP",
+        "unitPrice": 14.50,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 401
+}

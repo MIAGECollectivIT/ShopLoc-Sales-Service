@@ -1,0 +1,28 @@
+meta {
+  name: 05 - Mettre a jour le statut vers CANCELLED - 200
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/v1/sales/orders/{{orderReference}}/status
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+}
+
+body:json {
+  {
+    "status": "CANCELLED"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.orderReference: eq {{orderReference}}
+  res.body.status: eq CANCELLED
+}

@@ -1,6 +1,8 @@
 package fr.miage.collectivit.salesservice.security;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -81,5 +83,90 @@ class SalesSecurityIntegrationTest {
     mockMvc
         .perform(get("/v1/sales/status").header("Authorization", "Bearer " + token))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/orders without token -> should return 401 Unauthorized")
+  void shouldDenyOrderCreationWithoutToken() throws Exception {
+    mockMvc
+        .perform(post("/v1/sales/orders").contentType("application/json").content("{\"items\":[]}"))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName(
+      "PATCH /v1/sales/orders/{ref}/status with CLIENT role -> should pass security interceptor")
+  void shouldAllowOrderStatusUpdateForClientRole() throws Exception {
+    String token = generateTestToken("CLIENT", "client@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-TEST-1234/status")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"status\":\"PAID\"}"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  @DisplayName("PATCH /v1/sales/orders/{ref}/status with MERCHANT role -> should pass security")
+  void shouldAllowOrderStatusUpdateForMerchantRole() throws Exception {
+    String token =
+        generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-TEST-1234/status")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"status\":\"PAID\"}"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/physical with CLIENT role -> should return 403 Forbidden")
+  void shouldDenyPhysicalSaleForClientRole() throws Exception {
+    String token = generateTestToken("CLIENT", "client@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            post("/v1/sales/physical")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"storeId\":1,\"amount\":10.0}"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/payments/authorize without token -> should return 401 Unauthorized")
+  void shouldDenyPaymentAuthorizeWithoutToken() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/sales/payments/authorize")
+                .contentType("application/json")
+                .content(
+                    "{\"amount\":10.00,\"currency\":\"EUR\",\"reference\":\"REF-1\",\"paymentToken\":\"tok_1\"}"))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/payments/{ref} without token -> should return 401 Unauthorized")
+  void shouldDenyGetPaymentWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/payments/REF-1234")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/physical/{ref} without token -> should return 401 Unauthorized")
+  void shouldDenyGetPhysicalSaleWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/physical/PHYS-1234")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/orders without token -> should return 401 Unauthorized")
+  void shouldDenyGetOrdersWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/orders")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/orders/{ref} without token -> should return 401 Unauthorized")
+  void shouldDenyGetOrderByReferenceWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/orders/CMD-1234")).andExpect(status().isUnauthorized());
   }
 }

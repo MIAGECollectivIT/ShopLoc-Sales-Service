@@ -1,0 +1,35 @@
+meta {
+  name: 04 - Rejet creation commande sans storeId - 400
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/sales/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{clientToken}}
+}
+
+body:json {
+  {
+    "items": [
+      {
+        "productId": 2,
+        "productName": "Baguette",
+        "unitPrice": 1.50,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.error: eq "Validation Failed"
+}
+

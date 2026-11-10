@@ -1,6 +1,8 @@
 package fr.miage.collectivit.salesservice.controller;
 
 import fr.miage.collectivit.salesservice.config.OpenApiConfig;
+import fr.miage.collectivit.salesservice.security.RequiresRole;
+import fr.miage.collectivit.salesservice.security.UserRole;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SalesStatusController {
 
   @GetMapping("/status")
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Check service status",
       description = "Returns the current running status of the sales service",
