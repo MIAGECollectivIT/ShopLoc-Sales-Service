@@ -23,6 +23,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -66,6 +68,7 @@ public class OrderProcessingService {
 
     Order order =
         Order.builder()
+            .uid(UUID.randomUUID())
             .orderReference(orderReference)
             .customerId(customerId)
             .customerEmail(effectiveEmail)
@@ -125,27 +128,51 @@ public class OrderProcessingService {
     return orders.stream().map(this::mapToResponse).toList();
   }
 
+  public Optional<Order> resolveOrder(String identifier) {
+    if (identifier == null || identifier.isBlank()) {
+      return Optional.empty();
+    }
+    String trimmed = identifier.trim();
+    try {
+      UUID uid = UUID.fromString(trimmed);
+      Optional<Order> byUid = orderRepository.findByUid(uid);
+      if (byUid.isPresent()) {
+        return byUid;
+      }
+    } catch (IllegalArgumentException ignored) {
+      // Not a UUID, fallback to reference or ID
+    }
+    Optional<Order> byRef = orderRepository.findByOrderReference(trimmed);
+    if (byRef.isPresent()) {
+      return byRef;
+    }
+    try {
+      Long id = Long.parseLong(trimmed);
+      return orderRepository.findById(id);
+    } catch (NumberFormatException ignored) {
+      return Optional.empty();
+    }
+  }
+
   @Transactional(readOnly = true)
-  public OrderResponse getOrderByReference(String orderReference) {
+  public OrderResponse getOrderByReference(String identifier) {
     Order order =
-        orderRepository
-            .findByOrderReference(orderReference)
+        resolveOrder(identifier)
             .orElseThrow(
                 () ->
                     new OrderNotFoundException(
-                        "Order with reference " + orderReference + " not found"));
+                        "Order with identifier " + identifier + " not found"));
     return mapToResponse(order);
   }
 
   @Transactional
-  public OrderResponse updateOrderStatus(String orderReference, String newStatus) {
+  public OrderResponse updateOrderStatus(String identifier, String newStatus) {
     Order order =
-        orderRepository
-            .findByOrderReference(orderReference)
+        resolveOrder(identifier)
             .orElseThrow(
                 () ->
                     new OrderNotFoundException(
-                        "Order with reference " + orderReference + " not found"));
+                        "Order with identifier " + identifier + " not found"));
 
     OrderStatus status;
     try {
@@ -161,7 +188,7 @@ public class OrderProcessingService {
     Order updated = orderRepository.save(order);
 
     if (log.isInfoEnabled()) {
-      log.info("Order status updated: reference={}, newStatus={}", orderReference, status);
+      log.info("Order status updated: identifier={}, newStatus={}", identifier, status);
     }
     return mapToResponse(updated);
   }
@@ -211,6 +238,7 @@ public class OrderProcessingService {
 
     return new OrderResponse(
         order.getId(),
+        order.getUid(),
         order.getOrderReference(),
         order.getCustomerId(),
         order.getCustomerEmail(),

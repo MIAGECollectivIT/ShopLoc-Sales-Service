@@ -4,10 +4,16 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Schema(description = "Order response representation")
+@SuppressWarnings("PMD.ExcessiveParameterList")
 public record OrderResponse(
     @Schema(description = "Order database identifier", example = "1") Long id,
+    @Schema(
+            description = "Order public unique UUID identifier",
+            example = "668aacbd-d4bb-44e1-a23f-bbc2186ffef1")
+        UUID uid,
     @Schema(description = "Unique human-readable order reference", example = "CMD-CC-20261110-8472")
         String orderReference,
     @Schema(description = "Customer user identifier if authenticated", example = "user-123")
@@ -22,4 +28,34 @@ public record OrderResponse(
     @Schema(description = "Creation timestamp") Instant createdAt,
     @Schema(description = "Breakdown summaries per merchant store")
         List<OrderStoreSummaryResponse> storeSummaries,
-    @Schema(description = "All order items") List<OrderItemResponse> items) {}
+    @Schema(description = "All order items") List<OrderItemResponse> items) {
+
+  public OrderResponse(
+      Long id,
+      String orderReference,
+      String customerId,
+      String customerEmail,
+      String clientCode,
+      BigDecimal totalAmount,
+      String currency,
+      String status,
+      Instant expiresAt,
+      Instant createdAt,
+      List<OrderStoreSummaryResponse> storeSummaries,
+      List<OrderItemResponse> items) {
+    this(
+        id,
+        UUID.randomUUID(),
+        orderReference,
+        customerId,
+        customerEmail,
+        clientCode,
+        totalAmount,
+        currency,
+        status,
+        expiresAt,
+        createdAt,
+        storeSummaries,
+        items);
+  }
+}

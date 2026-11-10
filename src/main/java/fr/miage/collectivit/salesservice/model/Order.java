@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -34,6 +35,9 @@ public class Order {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  @Column(name = "uid", nullable = false, unique = true)
+  private UUID uid;
 
   @Column(name = "order_reference", nullable = false, unique = true, length = 64)
   private String orderReference;
@@ -81,6 +85,9 @@ public class Order {
   @PrePersist
   protected void onCreate() {
     Instant now = Instant.now();
+    if (this.uid == null) {
+      this.uid = UUID.randomUUID();
+    }
     if (this.createdAt == null) {
       this.createdAt = now;
     }
