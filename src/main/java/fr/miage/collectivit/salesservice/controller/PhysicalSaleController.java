@@ -57,16 +57,36 @@ public class PhysicalSaleController {
   }
 
   @GetMapping("/{reference}")
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Retrieve physical sale transaction by reference",
       description = "Returns the physical sale transaction audit record matching the reference.")
   @ApiResponses(
       value = {
         @ApiResponse(responseCode = "200", description = "Physical sale transaction found"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Bearer token required"),
+        @ApiResponse(
+            responseCode = "403",
+            description = "Forbidden - Caller cannot access another customer's physical sale"),
         @ApiResponse(responseCode = "404", description = "Physical sale transaction not found")
       })
   public ResponseEntity<PhysicalSaleResponse> getPhysicalSaleByReference(
-      @PathVariable String reference) {
-    return ResponseEntity.ok(physicalSaleService.getByReference(reference));
+      @PathVariable String reference, HttpServletRequest request) {
+    String role = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
+    String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+    PhysicalSaleResponse response = physicalSaleService.getByReference(reference);
+    verifyPhysicalSaleAccess(response, role, userId);
+    return ResponseEntity.ok(response);
+  }
+
+  private void verifyPhysicalSaleAccess(PhysicalSaleResponse response, String role, String userId) {
+    if (UserRole.ADMIN.name().equalsIgnoreCase(role)
+        || UserRole.MERCHANT.name().equalsIgnoreCase(role)) {
+      return;
+    }
+    if (response.customerId() != null && !response.customerId().equalsIgnoreCase(userId)) {
+      throw new fr.miage.collectivit.salesservice.exception.ForbiddenException(
+          "Access denied: you do not have permission to view this physical sale");
+    }
   }
 }

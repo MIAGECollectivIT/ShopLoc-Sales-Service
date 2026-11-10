@@ -133,4 +133,40 @@ class SalesSecurityIntegrationTest {
                 .content("{\"storeId\":1,\"amount\":10.0}"))
         .andExpect(status().isForbidden());
   }
+
+  @Test
+  @DisplayName("POST /v1/sales/payments/authorize without token -> should return 401 Unauthorized")
+  void shouldDenyPaymentAuthorizeWithoutToken() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/sales/payments/authorize")
+                .contentType("application/json")
+                .content(
+                    "{\"amount\":10.00,\"currency\":\"EUR\",\"reference\":\"REF-1\",\"paymentToken\":\"tok_1\"}"))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/payments/{ref} without token -> should return 401 Unauthorized")
+  void shouldDenyGetPaymentWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/payments/REF-1234")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/physical/{ref} without token -> should return 401 Unauthorized")
+  void shouldDenyGetPhysicalSaleWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/physical/PHYS-1234")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/orders without token -> should return 401 Unauthorized")
+  void shouldDenyGetOrdersWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/orders")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/orders/{ref} without token -> should return 401 Unauthorized")
+  void shouldDenyGetOrderByReferenceWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/orders/CMD-1234")).andExpect(status().isUnauthorized());
+  }
 }

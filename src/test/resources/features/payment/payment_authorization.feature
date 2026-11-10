@@ -13,7 +13,7 @@ Feature: Bank Payment Gateway Emulation and Transaction Audit (SLE-79)
     And a payment transaction with reference "ORD-BDD-001" is persisted in database with status "TRANSACTION_APPROVED"
 
   Scenario: Recover automatically when the external bank gateway fails once with 503
-    Given an unauthenticated user
+    Given an authenticated user with role "CLIENT"
     And the external bank gateway fails once with 503 before approving on retry
     When a payment authorization is requested for amount "15.00" currency "EUR" reference "PARK-RETRY-002" and token "tok_mastercard_9999"
     Then the HTTP response status should be 200
@@ -31,7 +31,7 @@ Feature: Bank Payment Gateway Emulation and Transaction Audit (SLE-79)
     And the response JSON field "status" should equal "TRANSACTION_APPROVED"
 
   Scenario: Return 404 Not Found when querying an unknown payment reference
-    Given an unauthenticated user
+    Given an authenticated user with role "CLIENT"
     When the payment transaction is requested for reference "UNKNOWN-REF-999"
     Then the HTTP response status should be 404
 
@@ -41,8 +41,13 @@ Feature: Bank Payment Gateway Emulation and Transaction Audit (SLE-79)
     When a payment authorization is requested for amount "50.00" currency "EUR" reference "ORD-FAIL-503" and token "tok_visa_4242"
     Then the HTTP response status should be 502
 
-  Scenario Outline: Reject malformed payment authorization requests with 400 Bad Request
+  Scenario: Deny payment authorization when caller is not authenticated
     Given an unauthenticated user
+    When a payment authorization is requested for amount "10.00" currency "EUR" reference "ORD-ANON-001" and token "tok_visa_4242"
+    Then the HTTP response status should be 401
+
+  Scenario Outline: Reject malformed payment authorization requests with 400 Bad Request
+    Given an authenticated user with role "CLIENT"
     When a payment authorization is requested for amount "<amount>" currency "<currency>" reference "<reference>" and token "<token>"
     Then the HTTP response status should be 400
 
