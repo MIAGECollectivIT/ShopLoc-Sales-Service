@@ -16,4 +16,5 @@ public class ScenarioContext {
   private String jwtToken;
   private ResultActions lastResult;
   private MockRestServiceServer mockBankServer;
+  private MockRestServiceServer mockLoyaltyServer;
 }
