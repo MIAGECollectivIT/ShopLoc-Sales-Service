@@ -189,6 +189,16 @@ public class OrderProcessingService {
       throw new IllegalArgumentException("Invalid order status: " + newStatus, ex);
     }
 
+    if (order.getStatus() == status) {
+      if (log.isInfoEnabled()) {
+        log.info(
+            "Order {} is already in status {}, skipping status update and event publication",
+            identifier,
+            status);
+      }
+      return mapToResponse(order);
+    }
+
     releaseStockIfCancelledOrExpired(order, status);
 
     order.setStatus(status);

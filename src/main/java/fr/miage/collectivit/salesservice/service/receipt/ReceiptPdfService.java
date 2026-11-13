@@ -26,7 +26,6 @@ import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -163,6 +162,7 @@ public class ReceiptPdfService {
     storeTable.setWidthPercentage(100);
     storeTable.setWidths(new float[] {4.5f, 1.5f, 2f, 2f});
     storeTable.setSpacingAfter(10);
+    storeTable.setHeaderRows(2);
 
     String safeStoreName =
         (storeSummary.storeName() != null && !storeSummary.storeName().isBlank())
@@ -280,9 +280,7 @@ public class ReceiptPdfService {
       QRCodeWriter qrCodeWriter = new QRCodeWriter();
       BitMatrix bitMatrix = qrCodeWriter.encode(codeToEncode, BarcodeFormat.QR_CODE, 140, 140);
       BufferedImage bufferedImage = MatrixToImageWriter.toBufferedImage(bitMatrix);
-      ByteArrayOutputStream pngOut = new ByteArrayOutputStream();
-      ImageIO.write(bufferedImage, "PNG", pngOut);
-      Image qrImage = Image.getInstance(pngOut.toByteArray());
+      Image qrImage = Image.getInstance(bufferedImage, null);
       qrImage.setAlignment(Element.ALIGN_CENTER);
       boxCell.addElement(qrImage);
     } catch (Exception ex) {

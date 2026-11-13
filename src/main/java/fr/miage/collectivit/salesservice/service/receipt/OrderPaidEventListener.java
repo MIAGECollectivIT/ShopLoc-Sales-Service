@@ -18,7 +18,7 @@ public class OrderPaidEventListener {
 
   private final ReceiptEmailService receiptEmailService;
 
-  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
   public void handleOrderPaidEvent(OrderPaidEvent event) {
     if (log.isInfoEnabled()) {
       log.info(
