@@ -149,4 +149,50 @@ class ReceiptEmailServiceTest {
     verify(orderRepository).save(order);
     assertThat(order.getReceiptSentAt()).isNotNull();
   }
+
+  @Test
+  @DisplayName(
+      "Should reject resending receipt email when cooldown is active (429 Too Many Requests)")
+  void shouldRejectResendingReceiptEmailWhenCooldownActive() {
+    String orderRef = "CMD-CC-20261113-9999";
+    Order order =
+        Order.builder()
+            .id(3L)
+            .uid(UUID.randomUUID())
+            .orderReference(orderRef)
+            .customerId("user-3")
+            .customerEmail("client3@example.com")
+            .status(OrderStatus.PAID)
+            .totalAmount(new BigDecimal("15.00"))
+            .createdAt(Instant.now().minusSeconds(100))
+            .updatedAt(Instant.now())
+            .receiptSentAt(Instant.now().minusSeconds(10)) // sent 10s ago (< 60s cooldown)
+            .expiresAt(Instant.now().plusSeconds(1800))
+            .build();
+
+    OrderResponse orderResponse =
+        new OrderResponse(
+            3L,
+            order.getUid(),
+            orderRef,
+            "user-3",
+            "client3@example.com",
+            "CLT-3333",
+            new BigDecimal("15.00"),
+            "EUR",
+            "PAID",
+            order.getExpiresAt(),
+            order.getCreatedAt(),
+            List.of(),
+            List.of(),
+            order.getReceiptSentAt());
+
+    when(orderProcessingService.resolveOrder(orderRef)).thenReturn(Optional.of(order));
+    when(orderProcessingService.mapToResponse(order)).thenReturn(orderResponse);
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> receiptEmailService.resendReceiptEmail(orderRef))
+        .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+        .hasMessageContaining("Veuillez patienter");
+  }
 }

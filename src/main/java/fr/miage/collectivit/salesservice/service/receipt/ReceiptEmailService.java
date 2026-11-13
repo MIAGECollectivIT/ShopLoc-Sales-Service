@@ -5,6 +5,7 @@ import fr.miage.collectivit.salesservice.repository.OrderRepository;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
 import jakarta.mail.internet.MimeMessage;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -12,11 +13,13 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpStatus;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Service managing automated email delivery of purchase proofs and Click & Collect receipts with
@@ -91,8 +94,11 @@ public class ReceiptEmailService {
     }
   }
 
+  public static final Duration RESEND_COOLDOWN = Duration.ofSeconds(60);
+
   /**
-   * Allows manual resending of the receipt email upon user request from customer account.
+   * Allows manual resending of the receipt email upon user request from customer account. Throttled
+   * with a 60-second cooldown to prevent email flooding and resource exhaustion.
    *
    * @param orderIdentifier reference or UID of the order
    * @return true if email was dispatched or queued, false otherwise
@@ -103,6 +109,17 @@ public class ReceiptEmailService {
       return false;
     }
     OrderResponse orderResponse = orderResponseOpt.get();
+
+    if (orderResponse.receiptSentAt() != null) {
+      Duration elapsed = Duration.between(orderResponse.receiptSentAt(), Instant.now());
+      if (elapsed.compareTo(RESEND_COOLDOWN) < 0) {
+        long remaining = RESEND_COOLDOWN.minus(elapsed).getSeconds();
+        throw new ResponseStatusException(
+            HttpStatus.TOO_MANY_REQUESTS,
+            "Veuillez patienter " + remaining + " secondes avant de renvoyer un email.");
+      }
+    }
+
     boolean success = sendReceiptEmailInternal(orderResponse);
     if (success) {
       markReceiptSent(orderResponse.orderReference());
@@ -177,7 +194,8 @@ public class ReceiptEmailService {
   }
 
   private String buildHtmlEmailBody(OrderResponse order) {
-    String clientCode = order.clientCode() != null ? order.clientCode() : "N/A";
+    String clientCode = order.clientCode() != null ? escapeHtml(order.clientCode()) : "N/A";
+    String orderRef = escapeHtml(order.orderReference());
     return """
         <!DOCTYPE html>
         <html>
@@ -222,6 +240,17 @@ public class ReceiptEmailService {
         </body>
         </html>
         """
-        .formatted(order.orderReference(), order.orderReference(), order.totalAmount(), clientCode);
+        .formatted(orderRef, orderRef, order.totalAmount(), clientCode);
+  }
+
+  private String escapeHtml(String text) {
+    if (text == null) {
+      return "";
+    }
+    return text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;");
   }
 }
