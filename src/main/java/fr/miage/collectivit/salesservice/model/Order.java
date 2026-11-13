@@ -70,6 +70,9 @@ public class Order {
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt;
 
+  @Column(name = "receipt_sent_at")
+  private Instant receiptSentAt;
+
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
   @Builder.Default
   private List<OrderItem> items = new ArrayList<>();
