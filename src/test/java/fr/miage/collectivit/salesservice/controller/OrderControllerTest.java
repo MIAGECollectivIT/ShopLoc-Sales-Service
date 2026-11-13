@@ -21,6 +21,7 @@ import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
 import fr.miage.collectivit.salesservice.dto.UpdateOrderStatusRequest;
 import fr.miage.collectivit.salesservice.exception.GlobalExceptionHandler;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
+import fr.miage.collectivit.salesservice.model.OrderStatus;
 import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
 import fr.miage.collectivit.salesservice.security.UserRole;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
@@ -420,7 +421,48 @@ class OrderControllerTest {
             header()
                 .string(
                     HttpHeaders.CONTENT_DISPOSITION,
-                    "attachment; filename=\"preuve-achat-" + ref + ".pdf\""));
+                    "attachment; filename=\"bon-de-retrait-" + ref + ".pdf\""));
+  }
+
+  @Test
+  @DisplayName(
+      "GET /v1/sales/orders/{identifier}/receipt should return 200 OK when order is COMPLETED")
+  void shouldAllowDownloadingReceiptWhenOrderIsCompleted() throws Exception {
+    String ref = "CMD-CC-20261113-3333";
+    OrderResponse completedOrder =
+        new OrderResponse(
+            3L,
+            UUID.randomUUID(),
+            ref,
+            "user-10",
+            "client@example.com",
+            "CLT-10",
+            new BigDecimal("30.00"),
+            "EUR",
+            OrderStatus.COMPLETED.name(),
+            Instant.now().plusSeconds(3600),
+            Instant.now().minusSeconds(7200),
+            List.of(),
+            List.of(),
+            null,
+            Instant.now().minusSeconds(1800));
+
+    when(orderProcessingService.getOrderByReference(ref)).thenReturn(completedOrder);
+    when(receiptPdfService.generateReceiptPdf(completedOrder))
+        .thenReturn("%PDF-1.4 test bytes".getBytes());
+
+    mockMvc
+        .perform(
+            get("/v1/sales/orders/" + ref + "/receipt")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.CLIENT.name())
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "user-10"))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+        .andExpect(
+            header()
+                .string(
+                    HttpHeaders.CONTENT_DISPOSITION,
+                    "attachment; filename=\"facture-" + ref + ".pdf\""));
   }
 
   @Test

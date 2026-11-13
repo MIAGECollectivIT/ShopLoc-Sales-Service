@@ -171,15 +171,18 @@ public class ReceiptEmailService {
       MimeMessageHelper helper =
           new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
 
+      boolean isCompleted = "COMPLETED".equalsIgnoreCase(order.status());
+      String docLabel = isCompleted ? "Facture" : "Bon de retrait";
+      String pdfFilename =
+          (isCompleted ? "facture-" : "bon-de-retrait-") + order.orderReference() + ".pdf";
+
       helper.setFrom(fromEmail);
       helper.setTo(recipient.trim());
       helper.setSubject(
-          "Confirmation et preuve d'achat de votre commande ShopLoc - " + order.orderReference());
+          docLabel + " et confirmation de votre commande ShopLoc - " + order.orderReference());
 
-      String emailBody = buildHtmlEmailBody(order);
+      String emailBody = buildHtmlEmailBody(order, isCompleted);
       helper.setText(emailBody, true);
-
-      String pdfFilename = "preuve-achat-" + order.orderReference() + ".pdf";
       helper.addAttachment(pdfFilename, new ByteArrayResource(pdfBytes), "application/pdf");
 
       mailSender.send(mimeMessage);
@@ -193,9 +196,35 @@ public class ReceiptEmailService {
     }
   }
 
-  private String buildHtmlEmailBody(OrderResponse order) {
+  private String buildHtmlEmailBody(OrderResponse order, boolean isCompleted) {
     String clientCode = order.clientCode() != null ? escapeHtml(order.clientCode()) : "N/A";
     String orderRef = escapeHtml(order.orderReference());
+    String statusBadge = isCompleted ? "ARTICLES RÉCUPÉRÉS" : "PAYÉE";
+    String noticeText =
+        isCompleted
+            ? "Votre <strong>facture officielle</strong> est jointe à cet email au format PDF."
+            : "Votre <strong>preuve d'achat officielle</strong> est jointe à cet email au format PDF"
+                + " (incluant le détail par commerce et votre QR Code de retrait).";
+    String instructionBox =
+        isCompleted
+            ? """
+            <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 20px;">
+              <h4 style="margin: 0 0 6px 0; color: #1e40af;">Statut du retrait Click & Collect</h4>
+              <p style="margin: 0; font-size: 13px; color: #1d4ed8;">
+                L'ensemble de vos articles a déjà été remis en boutique auprès de nos commerçants partenaires.
+              </p>
+            </div>
+            """
+            : """
+            <div style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 12px; margin-bottom: 20px;">
+              <h4 style="margin: 0 0 6px 0; color: #065f46;">Consigne de retrait en boutique Click & Collect</h4>
+              <p style="margin: 0; font-size: 13px; color: #047857;">
+                Veuillez vous présenter chez chacun des commerçants partenaires muni de votre carte physique ShopLoc
+                ou de votre QR Code dans l'application mobile afin de récupérer vos articles.
+              </p>
+            </div>
+            """;
+
     return """
         <!DOCTYPE html>
         <html>
@@ -214,24 +243,18 @@ public class ReceiptEmailService {
           <div class="container">
             <div class="header">
               <h1 style="color: #0f172a; margin: 0;">ShopLoc</h1>
-              <p style="color: #64748b; margin: 4px 0 0 0;">Confirmation de commande & Preuve d'achat</p>
+              <p style="color: #64748b; margin: 4px 0 0 0;">Confirmation de commande & Justificatif</p>
             </div>
             <p>Bonjour,</p>
-            <p>Nous vous confirmons la bonne réception du paiement pour votre commande <strong>%s</strong>.</p>
+            <p>Nous vous confirmons les informations relatives à votre commande <strong>%s</strong>.</p>
             <div class="card">
               <p style="margin: 4px 0;"><strong>Référence :</strong> %s</p>
               <p style="margin: 4px 0;"><strong>Montant réglé :</strong> %.2f €</p>
               <p style="margin: 4px 0;"><strong>Code fidélité client :</strong> <code>%s</code></p>
-              <p style="margin: 4px 0;"><strong>Statut :</strong> <span class="badge">PAYÉE</span></p>
+              <p style="margin: 4px 0;"><strong>Statut :</strong> <span class="badge">%s</span></p>
             </div>
-            <div style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 12px; margin-bottom: 20px;">
-              <h4 style="margin: 0 0 6px 0; color: #065f46;">Consigne de retrait en boutique Click & Collect</h4>
-              <p style="margin: 0; font-size: 13px; color: #047857;">
-                Veuillez vous présenter chez chacun des commerçants partenaires muni de votre carte physique ShopLoc
-                ou de votre QR Code dans l'application mobile afin de récupérer vos articles.
-              </p>
-            </div>
-            <p>Votre <strong>preuve d'achat officielle</strong> est jointe à cet email au format PDF (incluant le détail par commerce et votre QR Code de retrait).</p>
+            %s
+            <p>%s</p>
             <p>Merci pour votre confiance et à très bientôt chez vos commerçants locaux !</p>
             <div class="footer">
               Cet email automatique a été généré par la plateforme ShopLoc Collectiv'IT. Merci de ne pas y répondre directement.
@@ -240,7 +263,14 @@ public class ReceiptEmailService {
         </body>
         </html>
         """
-        .formatted(orderRef, orderRef, order.totalAmount(), clientCode);
+        .formatted(
+            orderRef,
+            orderRef,
+            order.totalAmount(),
+            clientCode,
+            statusBadge,
+            instructionBox,
+            noticeText);
   }
 
   private String escapeHtml(String text) {

@@ -272,7 +272,8 @@ public class OrderProcessingService {
         order.getCreatedAt(),
         storeSummaries,
         itemResponses,
-        order.getReceiptSentAt());
+        order.getReceiptSentAt(),
+        order.getUpdatedAt());
   }
 
   @SuppressWarnings("PMD.AvoidCatchingGenericException")

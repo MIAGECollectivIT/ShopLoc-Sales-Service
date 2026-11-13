@@ -19,10 +19,12 @@ import com.lowagie.text.pdf.PdfWriter;
 import fr.miage.collectivit.salesservice.dto.OrderItemResponse;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
+import fr.miage.collectivit.salesservice.model.OrderStatus;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -30,7 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * Service generating official ShopLoc proof of purchase and click & collect receipt in PDF format.
+ * Service generating official ShopLoc bon de retrait and click & collect receipt in PDF format.
  * Implements Story SLE-21 using programmatic OpenPDF rendering (safe from SSRF / XXE injection).
  */
 @Slf4j
@@ -43,7 +45,9 @@ import org.springframework.stereotype.Service;
   "PMD.AvoidUncheckedExceptionsInSignatures",
   "PMD.GuardLogStatement",
   "PMD.TooManyMethods",
-  "PMD.CognitiveComplexity"
+  "PMD.CognitiveComplexity",
+  "PMD.ExcessiveImports",
+  "PMD.GodClass"
 })
 public class ReceiptPdfService {
 
@@ -57,7 +61,7 @@ public class ReceiptPdfService {
       DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss").withZone(ZoneId.of("Europe/Paris"));
 
   /**
-   * Generates a byte array containing the official PDF receipt for an order.
+   * Generates a byte array containing the official PDF receipt / bon de retrait for an order.
    *
    * @param order the completed order details
    * @return byte array representing the rendered PDF document
@@ -68,16 +72,23 @@ public class ReceiptPdfService {
     }
 
     try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-      Document document = new Document(PageSize.A4, 36, 36, 40, 40);
+      Document document = new Document(PageSize.A4, 36, 36, 36, 36);
       PdfWriter.getInstance(document, out);
       document.open();
 
-      addHeader(document);
-      addOrderMetadata(document, order);
+      boolean isCompleted = OrderStatus.COMPLETED.name().equalsIgnoreCase(order.status());
+      document.addTitle(
+          (isCompleted ? "Facture - " : "Bon de retrait - ") + order.orderReference());
+      document.addAuthor("ShopLoc");
+      document.addSubject(
+          isCompleted
+              ? "Facture & Justificatif d'achat Click & Collect"
+              : "Bon de retrait & Reçu de commande Click & Collect");
+
+      addTopHeaderWithQrCode(document, order);
       addStoreSummariesAndItems(document, order);
       addTotalsAndLoyalty(document, order);
-      addClickAndCollectInstructionsWithQrCode(document, order);
-      addFooter(document);
+      addFooter(document, isCompleted);
 
       document.close();
       return out.toByteArray();
@@ -88,7 +99,7 @@ public class ReceiptPdfService {
           ex.getMessage(),
           ex);
       throw new IllegalStateException(
-          "Erreur lors de la génération du document PDF de preuve d'achat", ex);
+          "Erreur lors de la génération du document PDF de bon de retrait", ex);
     } catch (Exception ex) {
       log.error(
           "Unexpected error during PDF generation for order {}: {}",
@@ -99,47 +110,113 @@ public class ReceiptPdfService {
     }
   }
 
-  private void addHeader(Document document) throws DocumentException {
-    Font brandFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, PRIMARY_COLOR);
-    Paragraph brand = new Paragraph("ShopLoc", brandFont);
-    brand.setAlignment(Element.ALIGN_CENTER);
-    document.add(brand);
+  private void addTopHeaderWithQrCode(Document document, OrderResponse order)
+      throws DocumentException {
+    PdfPTable headerTable = new PdfPTable(2);
+    headerTable.setWidthPercentage(100);
+    headerTable.setWidths(new float[] {6.2f, 3.8f});
+    headerTable.setSpacingAfter(15);
 
-    Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13, ACCENT_COLOR);
-    Paragraph title = new Paragraph("PREUVE D'ACHAT & BON DE RETRAIT CLICK & COLLECT", titleFont);
-    title.setAlignment(Element.ALIGN_CENTER);
-    title.setSpacingAfter(15);
-    document.add(title);
+    headerTable.addCell(createLeftHeaderCell(order));
+    headerTable.addCell(createRightQrCell(order));
+    document.add(headerTable);
   }
 
-  private void addOrderMetadata(Document document, OrderResponse order) throws DocumentException {
-    PdfPTable metaTable = new PdfPTable(2);
-    metaTable.setWidthPercentage(100);
-    metaTable.setWidths(new float[] {1f, 1f});
-    metaTable.setSpacingAfter(15);
-
-    Font labelFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, PRIMARY_COLOR);
-    Font valueFont = FontFactory.getFont(FontFactory.HELVETICA, 9, Color.DARK_GRAY);
-
+  private PdfPCell createLeftHeaderCell(OrderResponse order) {
     PdfPCell leftCell = new PdfPCell();
     leftCell.setBorder(PdfPCell.NO_BORDER);
-    leftCell.addElement(new Paragraph("Référence : " + order.orderReference(), labelFont));
+    leftCell.setPaddingRight(10f);
+
+    Font brandFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18, PRIMARY_COLOR);
+    Paragraph brandPara = new Paragraph("ShopLoc", brandFont);
+    brandPara.setSpacingAfter(2);
+    leftCell.addElement(brandPara);
+
+    boolean isCompleted = OrderStatus.COMPLETED.name().equalsIgnoreCase(order.status());
+    Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, ACCENT_COLOR);
+    String headerTitle =
+        isCompleted ? "FACTURE & JUSTIFICATIF D'ACHAT" : "BON DE RETRAIT & REÇU DE COMMANDE";
+    Paragraph titlePara = new Paragraph(headerTitle, titleFont);
+    titlePara.setSpacingAfter(8);
+    leftCell.addElement(titlePara);
+
+    Font labelFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8.5f, PRIMARY_COLOR);
+    Font valueFont = FontFactory.getFont(FontFactory.HELVETICA, 8.5f, Color.DARK_GRAY);
+
+    leftCell.addElement(new Paragraph("Commande : " + order.orderReference(), labelFont));
     String dateStr = order.createdAt() != null ? DATE_FORMATTER.format(order.createdAt()) : "N/A";
     leftCell.addElement(new Paragraph("Date d'achat : " + dateStr, valueFont));
-    leftCell.addElement(new Paragraph("Statut : " + order.status(), labelFont));
+    leftCell.addElement(new Paragraph("Statut : " + formatStatusFrench(order.status()), labelFont));
 
-    PdfPCell rightCell = new PdfPCell();
-    rightCell.setBorder(PdfPCell.NO_BORDER);
-    rightCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-    if (order.customerEmail() != null && !order.customerEmail().isBlank()) {
-      rightCell.addElement(new Paragraph("Email client : " + order.customerEmail(), valueFont));
+    if (isCompleted) {
+      Instant recupDate = order.updatedAt() != null ? order.updatedAt() : order.createdAt();
+      String dateRecupStr = recupDate != null ? DATE_FORMATTER.format(recupDate) : dateStr;
+      leftCell.addElement(new Paragraph("Date de récupération : " + dateRecupStr, valueFont));
     }
-    String clientCode = order.clientCode() != null ? order.clientCode() : "N/A";
-    rightCell.addElement(new Paragraph("Code client / Carte : " + clientCode, labelFont));
 
-    metaTable.addCell(leftCell);
-    metaTable.addCell(rightCell);
-    document.add(metaTable);
+    if (order.customerEmail() != null && !order.customerEmail().isBlank()) {
+      leftCell.addElement(new Paragraph("Email client : " + order.customerEmail(), valueFont));
+    }
+
+    leftCell.addElement(createInstructionsParagraph(isCompleted));
+    return leftCell;
+  }
+
+  private Paragraph createInstructionsParagraph(boolean isCompleted) {
+    Font instructTitleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8f, PRIMARY_COLOR);
+    Font instructFont = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 7.5f, TEXT_MUTED);
+
+    Paragraph instructP = new Paragraph();
+    instructP.setSpacingBefore(6);
+    if (isCompleted) {
+      instructP.add(new Phrase("Statut du retrait en boutique :\n", instructTitleFont));
+      instructP.add(
+          new Phrase(
+              "L'ensemble des articles commandés a été remis au client en boutique.",
+              instructFont));
+    } else {
+      instructP.add(new Phrase("Consignes de retrait en boutique :\n", instructTitleFont));
+      instructP.add(
+          new Phrase(
+              "Présentez ce bon ou votre QR code auprès de chaque commerçant partenaire concerné pour"
+                  + " retirer vos articles.",
+              instructFont));
+    }
+    return instructP;
+  }
+
+  private PdfPCell createRightQrCell(OrderResponse order) {
+    PdfPCell rightCell = new PdfPCell();
+    rightCell.setBackgroundColor(new Color(248, 250, 252));
+    rightCell.setBorderColor(new Color(226, 232, 240));
+    rightCell.setBorderWidth(1f);
+    rightCell.setPadding(6f);
+    rightCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+
+    boolean hasLoyaltyCode = order.clientCode() != null && !order.clientCode().isBlank();
+    String codeToEncode = hasLoyaltyCode ? order.clientCode().trim() : order.orderReference();
+
+    try {
+      QRCodeWriter qrCodeWriter = new QRCodeWriter();
+      BitMatrix bitMatrix = qrCodeWriter.encode(codeToEncode, BarcodeFormat.QR_CODE, 90, 90);
+      BufferedImage bufferedImage = MatrixToImageWriter.toBufferedImage(bitMatrix);
+      Image qrImage = Image.getInstance(bufferedImage, null);
+      qrImage.setAlignment(Element.ALIGN_CENTER);
+      rightCell.addElement(qrImage);
+    } catch (Exception ex) {
+      log.warn(
+          "Could not generate barcode QR code image for code {}: {}",
+          codeToEncode,
+          ex.getMessage());
+    }
+
+    Font monoFont = FontFactory.getFont(FontFactory.COURIER_BOLD, 11f, PRIMARY_COLOR);
+    Paragraph codePara = new Paragraph(codeToEncode, monoFont);
+    codePara.setAlignment(Element.ALIGN_CENTER);
+    codePara.setSpacingBefore(4);
+    rightCell.addElement(codePara);
+
+    return rightCell;
   }
 
   private void addStoreSummariesAndItems(Document document, OrderResponse order)
@@ -190,7 +267,7 @@ public class ReceiptPdfService {
     }
 
     PdfPCell subtotalLabel =
-        new PdfPCell(new Phrase("Sous-total " + safeStoreName, tableHeaderFont));
+        new PdfPCell(new Phrase("Sous-total : " + safeStoreName, tableHeaderFont));
     subtotalLabel.setColspan(3);
     subtotalLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
     subtotalLabel.setPadding(5);
@@ -243,72 +320,17 @@ public class ReceiptPdfService {
     document.add(totalTable);
   }
 
-  private void addClickAndCollectInstructionsWithQrCode(Document document, OrderResponse order)
-      throws DocumentException {
-    PdfPTable boxTable = new PdfPTable(1);
-    boxTable.setWidthPercentage(100);
-    boxTable.setSpacingAfter(15);
-
-    PdfPCell boxCell = new PdfPCell();
-    boxCell.setBackgroundColor(new Color(248, 250, 252));
-    boxCell.setBorderColor(new Color(203, 213, 225));
-    boxCell.setPadding(10);
-
-    Font boxTitleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, PRIMARY_COLOR);
-    Font boxTextFont = FontFactory.getFont(FontFactory.HELVETICA, 8, TEXT_MUTED);
-    Font monoFont = FontFactory.getFont(FontFactory.COURIER_BOLD, 11, PRIMARY_COLOR);
-
-    Paragraph boxTitle = new Paragraph("CONSIGNES DE RETRAIT EN BOUTIQUE", boxTitleFont);
-    boxTitle.setAlignment(Element.ALIGN_CENTER);
-    boxTitle.setSpacingAfter(4);
-    boxCell.addElement(boxTitle);
-
-    Paragraph boxText =
-        new Paragraph(
-            "Pour retirer votre commande Click & Collect, présentez ce document ou votre application mobile "
-                + "auprès de chaque commerçant partenaire concerné. Le commerçant scannera votre QR Code ou saisira votre code fidélité.",
-            boxTextFont);
-    boxText.setAlignment(Element.ALIGN_CENTER);
-    boxText.setSpacingAfter(8);
-    boxCell.addElement(boxText);
-
-    // QR Code Generation
-    boolean hasLoyaltyCode = order.clientCode() != null && !order.clientCode().isBlank();
-    String codeToEncode = hasLoyaltyCode ? order.clientCode().trim() : order.orderReference();
-
-    try {
-      QRCodeWriter qrCodeWriter = new QRCodeWriter();
-      BitMatrix bitMatrix = qrCodeWriter.encode(codeToEncode, BarcodeFormat.QR_CODE, 140, 140);
-      BufferedImage bufferedImage = MatrixToImageWriter.toBufferedImage(bitMatrix);
-      Image qrImage = Image.getInstance(bufferedImage, null);
-      qrImage.setAlignment(Element.ALIGN_CENTER);
-      boxCell.addElement(qrImage);
-    } catch (Exception ex) {
-      log.warn(
-          "Could not generate barcode QR code image for code {}: {}",
-          codeToEncode,
-          ex.getMessage());
-    }
-
-    String labelText =
-        hasLoyaltyCode
-            ? "Code fidélité client : " + codeToEncode
-            : "Référence commande : " + codeToEncode;
-    Paragraph codePara = new Paragraph(labelText, monoFont);
-    codePara.setAlignment(Element.ALIGN_CENTER);
-    codePara.setSpacingBefore(4);
-    boxCell.addElement(codePara);
-
-    boxTable.addCell(boxCell);
-    document.add(boxTable);
-  }
-
-  private void addFooter(Document document) throws DocumentException {
+  private void addFooter(Document document, boolean isCompleted) throws DocumentException {
     Font footerFont = FontFactory.getFont(FontFactory.HELVETICA, 7, TEXT_MUTED);
+    String purpose =
+        isCompleted
+            ? "de facture et justificatif d'achat."
+            : "de bon de retrait en boutique et de confirmation d'achat.";
     Paragraph footer =
         new Paragraph(
-            "Document officiel émis par ShopLoc Collectiv'IT — Plateforme de commerce de proximité et fidélité.\n"
-                + "Ce justificatif tient lieu de preuve de paiement et de bon de retrait en boutique.",
+            "Document officiel émis par ShopLoc Collectiv'IT — Plateforme de commerce de proximité"
+                + " et fidélité.\nCe justificatif tient lieu "
+                + purpose,
             footerFont);
     footer.setAlignment(Element.ALIGN_CENTER);
     document.add(footer);
@@ -334,5 +356,19 @@ public class ReceiptPdfService {
       return "0,00 €";
     }
     return String.format(Locale.FRENCH, "%.2f €", price);
+  }
+
+  private String formatStatusFrench(String status) {
+    if (status == null) {
+      return "INCONNU";
+    }
+    return switch (status.toUpperCase(Locale.ROOT)) {
+      case "PAID" -> "PAYÉ";
+      case "COMPLETED" -> "ARTICLES RÉCUPÉRÉS";
+      case "PENDING_PAYMENT" -> "EN ATTENTE DE PAIEMENT";
+      case "CANCELLED" -> "ANNULÉ";
+      case "EXPIRED" -> "EXPIRÉ";
+      default -> status.toUpperCase(Locale.ROOT);
+    };
   }
 }

@@ -172,7 +172,9 @@ public class OrderController {
     verifyReceiptDownloadAccess(order, role, userId);
 
     byte[] pdfBytes = receiptPdfService.generateReceiptPdf(order);
-    String filename = "preuve-achat-" + order.orderReference() + ".pdf";
+    boolean isCompleted = OrderStatus.COMPLETED.name().equalsIgnoreCase(order.status());
+    String prefix = isCompleted ? "facture-" : "bon-de-retrait-";
+    String filename = prefix + order.orderReference() + ".pdf";
 
     return ResponseEntity.ok()
         .contentType(MediaType.APPLICATION_PDF)
@@ -209,10 +211,13 @@ public class OrderController {
   }
 
   private void verifyReceiptDownloadAccess(OrderResponse order, String role, String userId) {
-    if (!OrderStatus.PAID.name().equalsIgnoreCase(order.status())) {
+    boolean isAllowedStatus =
+        OrderStatus.PAID.name().equalsIgnoreCase(order.status())
+            || OrderStatus.COMPLETED.name().equalsIgnoreCase(order.status());
+    if (!isAllowedStatus) {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT,
-          "Impossible de générer la preuve d'achat : la commande n'a pas encore été réglée (statut actuel : "
+          "Impossible de générer le bon de retrait : la commande n'a pas encore été réglée (statut actuel : "
               + order.status()
               + ")");
     }
