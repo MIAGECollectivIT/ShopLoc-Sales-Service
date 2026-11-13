@@ -42,7 +42,9 @@ import org.springframework.stereotype.Service;
   "PMD.AvoidCatchingGenericException",
   "PMD.CloseResource",
   "PMD.AvoidUncheckedExceptionsInSignatures",
-  "PMD.GuardLogStatement"
+  "PMD.GuardLogStatement",
+  "PMD.TooManyMethods",
+  "PMD.CognitiveComplexity"
 })
 public class ReceiptPdfService {
 
@@ -143,59 +145,64 @@ public class ReceiptPdfService {
 
   private void addStoreSummariesAndItems(Document document, OrderResponse order)
       throws DocumentException {
+    if (order.storeSummaries() == null || order.storeSummaries().isEmpty()) {
+      return;
+    }
+    for (OrderStoreSummaryResponse storeSummary : order.storeSummaries()) {
+      renderStoreSection(document, storeSummary);
+    }
+  }
+
+  private void renderStoreSection(Document document, OrderStoreSummaryResponse storeSummary)
+      throws DocumentException {
     Font storeTitleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, PRIMARY_COLOR);
     Font tableHeaderFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, PRIMARY_COLOR);
     Font itemFont = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.BLACK);
 
-    if (order.storeSummaries() != null && !order.storeSummaries().isEmpty()) {
-      for (OrderStoreSummaryResponse storeSummary : order.storeSummaries()) {
-        PdfPTable storeTable = new PdfPTable(4);
-        storeTable.setWidthPercentage(100);
-        storeTable.setWidths(new float[] {4.5f, 1.5f, 2f, 2f});
-        storeTable.setSpacingAfter(10);
+    PdfPTable storeTable = new PdfPTable(4);
+    storeTable.setWidthPercentage(100);
+    storeTable.setWidths(new float[] {4.5f, 1.5f, 2f, 2f});
+    storeTable.setSpacingAfter(10);
 
-        // Store header span 4 columns
-        String storeLabel =
-            "COMMERCE PARTENAIRE : " + storeSummary.storeName().toUpperCase(Locale.FRENCH);
-        PdfPCell storeHeaderCell = new PdfPCell(new Phrase(storeLabel, storeTitleFont));
-        storeHeaderCell.setColspan(4);
-        storeHeaderCell.setBackgroundColor(STORE_HEADER_BG);
-        storeHeaderCell.setPadding(6);
-        storeTable.addCell(storeHeaderCell);
+    String safeStoreName =
+        (storeSummary.storeName() != null && !storeSummary.storeName().isBlank())
+            ? storeSummary.storeName()
+            : "Commerce #" + storeSummary.storeId();
+    String storeLabel = "COMMERCE PARTENAIRE : " + safeStoreName.toUpperCase(Locale.FRENCH);
+    PdfPCell storeHeaderCell = new PdfPCell(new Phrase(storeLabel, storeTitleFont));
+    storeHeaderCell.setColspan(4);
+    storeHeaderCell.setBackgroundColor(STORE_HEADER_BG);
+    storeHeaderCell.setPadding(6);
+    storeTable.addCell(storeHeaderCell);
 
-        // Column headers
-        addTableHeaderCell(storeTable, "Article", tableHeaderFont);
-        addTableHeaderCell(storeTable, "Quantité", tableHeaderFont);
-        addTableHeaderCell(storeTable, "Prix unitaire", tableHeaderFont);
-        addTableHeaderCell(storeTable, "Sous-total", tableHeaderFont);
+    addTableHeaderCell(storeTable, "Article", tableHeaderFont);
+    addTableHeaderCell(storeTable, "Quantité", tableHeaderFont);
+    addTableHeaderCell(storeTable, "Prix unitaire", tableHeaderFont);
+    addTableHeaderCell(storeTable, "Sous-total", tableHeaderFont);
 
-        if (storeSummary.items() != null) {
-          for (OrderItemResponse item : storeSummary.items()) {
-            addTableCell(storeTable, item.productName(), itemFont, Element.ALIGN_LEFT);
-            addTableCell(
-                storeTable, String.valueOf(item.quantity()), itemFont, Element.ALIGN_CENTER);
-            addTableCell(storeTable, formatPrice(item.unitPrice()), itemFont, Element.ALIGN_RIGHT);
-            addTableCell(storeTable, formatPrice(item.totalPrice()), itemFont, Element.ALIGN_RIGHT);
-          }
-        }
-
-        // Subtotal row
-        PdfPCell subtotalLabel =
-            new PdfPCell(new Phrase("Sous-total " + storeSummary.storeName(), tableHeaderFont));
-        subtotalLabel.setColspan(3);
-        subtotalLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        subtotalLabel.setPadding(5);
-        storeTable.addCell(subtotalLabel);
-
-        PdfPCell subtotalVal =
-            new PdfPCell(new Phrase(formatPrice(storeSummary.subtotal()), tableHeaderFont));
-        subtotalVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        subtotalVal.setPadding(5);
-        storeTable.addCell(subtotalVal);
-
-        document.add(storeTable);
+    if (storeSummary.items() != null) {
+      for (OrderItemResponse item : storeSummary.items()) {
+        addTableCell(storeTable, item.productName(), itemFont, Element.ALIGN_LEFT);
+        addTableCell(storeTable, String.valueOf(item.quantity()), itemFont, Element.ALIGN_CENTER);
+        addTableCell(storeTable, formatPrice(item.unitPrice()), itemFont, Element.ALIGN_RIGHT);
+        addTableCell(storeTable, formatPrice(item.totalPrice()), itemFont, Element.ALIGN_RIGHT);
       }
     }
+
+    PdfPCell subtotalLabel =
+        new PdfPCell(new Phrase("Sous-total " + safeStoreName, tableHeaderFont));
+    subtotalLabel.setColspan(3);
+    subtotalLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
+    subtotalLabel.setPadding(5);
+    storeTable.addCell(subtotalLabel);
+
+    PdfPCell subtotalVal =
+        new PdfPCell(new Phrase(formatPrice(storeSummary.subtotal()), tableHeaderFont));
+    subtotalVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
+    subtotalVal.setPadding(5);
+    storeTable.addCell(subtotalVal);
+
+    document.add(storeTable);
   }
 
   private void addTotalsAndLoyalty(Document document, OrderResponse order)
@@ -210,10 +217,18 @@ public class ReceiptPdfService {
 
     PdfPCell loyaltyCell = new PdfPCell();
     loyaltyCell.setBorder(PdfPCell.NO_BORDER);
-    // 1 euro = 1 point standard baseline reward
-    long estimatedPoints = order.totalAmount() != null ? order.totalAmount().longValue() : 0L;
-    loyaltyCell.addElement(
-        new Paragraph("Points fidélité acquis : +" + estimatedPoints + " pts", pointsFont));
+    boolean hasClientCode = order.clientCode() != null && !order.clientCode().isBlank();
+    if (hasClientCode) {
+      // 1 euro = 1 point standard baseline reward
+      long estimatedPoints = order.totalAmount() != null ? order.totalAmount().longValue() : 0L;
+      loyaltyCell.addElement(
+          new Paragraph("Points fidélité acquis : +" + estimatedPoints + " pts", pointsFont));
+    } else {
+      loyaltyCell.addElement(
+          new Paragraph(
+              "Points fidélité : aucun compte rattaché",
+              new Font(FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 9, TEXT_MUTED))));
+    }
 
     PdfPCell totalCell = new PdfPCell();
     totalCell.setBorder(PdfPCell.NO_BORDER);
@@ -258,10 +273,8 @@ public class ReceiptPdfService {
     boxCell.addElement(boxText);
 
     // QR Code Generation
-    String codeToEncode =
-        (order.clientCode() != null && !order.clientCode().isBlank())
-            ? order.clientCode().trim()
-            : order.orderReference();
+    boolean hasLoyaltyCode = order.clientCode() != null && !order.clientCode().isBlank();
+    String codeToEncode = hasLoyaltyCode ? order.clientCode().trim() : order.orderReference();
 
     try {
       QRCodeWriter qrCodeWriter = new QRCodeWriter();
@@ -279,7 +292,11 @@ public class ReceiptPdfService {
           ex.getMessage());
     }
 
-    Paragraph codePara = new Paragraph("Code fidélité client : " + codeToEncode, monoFont);
+    String labelText =
+        hasLoyaltyCode
+            ? "Code fidélité client : " + codeToEncode
+            : "Référence commande : " + codeToEncode;
+    Paragraph codePara = new Paragraph(labelText, monoFont);
     codePara.setAlignment(Element.ALIGN_CENTER);
     codePara.setSpacingBefore(4);
     boxCell.addElement(codePara);

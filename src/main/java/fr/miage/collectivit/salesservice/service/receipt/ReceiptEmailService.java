@@ -1,7 +1,6 @@
 package fr.miage.collectivit.salesservice.service.receipt;
 
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
-import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.repository.OrderRepository;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
 import jakarta.mail.internet.MimeMessage;
@@ -55,37 +54,36 @@ public class ReceiptEmailService {
 
   /**
    * Asynchronously generates and sends the PDF receipt to the customer's email upon order payment.
+   * Note: We intentionally avoid wrapping the whole method in @Transactional so that the HikariCP
+   * database connection is NOT held during PDF rendering or SMTP socket transmission.
    *
    * @param orderIdentifier reference, UID, or ID of the paid order
    */
   @Async
-  @Transactional
   public void sendReceiptEmailAsync(String orderIdentifier) {
     try {
-      Optional<Order> orderOpt = orderProcessingService.resolveOrder(orderIdentifier);
-      if (orderOpt.isEmpty()) {
+      Optional<OrderResponse> orderResponseOpt = loadOrderForReceipt(orderIdentifier);
+      if (orderResponseOpt.isEmpty()) {
         log.warn("Cannot send receipt email: order {} not found", orderIdentifier);
         return;
       }
 
-      Order order = orderOpt.get();
-      if (order.getReceiptSentAt() != null) {
+      OrderResponse orderResponse = orderResponseOpt.get();
+      if (orderResponse.receiptSentAt() != null) {
         log.info(
             "Receipt email already dispatched for order {} at {}",
-            order.getOrderReference(),
-            order.getReceiptSentAt());
+            orderResponse.orderReference(),
+            orderResponse.receiptSentAt());
         return;
       }
 
-      OrderResponse orderResponse = orderProcessingService.mapToResponse(order);
       boolean sent = sendReceiptEmailInternal(orderResponse);
       if (sent) {
-        order.setReceiptSentAt(Instant.now());
-        orderRepository.save(order);
+        markReceiptSent(orderResponse.orderReference());
         log.info(
             "Receipt email successfully dispatched for order {} to {}",
-            order.getOrderReference(),
-            order.getCustomerEmail());
+            orderResponse.orderReference(),
+            orderResponse.customerEmail());
       }
     } catch (Exception ex) {
       log.error(
@@ -99,20 +97,35 @@ public class ReceiptEmailService {
    * @param orderIdentifier reference or UID of the order
    * @return true if email was dispatched or queued, false otherwise
    */
-  @Transactional
   public boolean resendReceiptEmail(String orderIdentifier) {
-    Optional<Order> orderOpt = orderProcessingService.resolveOrder(orderIdentifier);
-    if (orderOpt.isEmpty()) {
+    Optional<OrderResponse> orderResponseOpt = loadOrderForReceipt(orderIdentifier);
+    if (orderResponseOpt.isEmpty()) {
       return false;
     }
-    Order order = orderOpt.get();
-    OrderResponse orderResponse = orderProcessingService.mapToResponse(order);
+    OrderResponse orderResponse = orderResponseOpt.get();
     boolean success = sendReceiptEmailInternal(orderResponse);
     if (success) {
-      order.setReceiptSentAt(Instant.now());
-      orderRepository.save(order);
+      markReceiptSent(orderResponse.orderReference());
     }
     return success;
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<OrderResponse> loadOrderForReceipt(String orderIdentifier) {
+    return orderProcessingService
+        .resolveOrder(orderIdentifier)
+        .map(orderProcessingService::mapToResponse);
+  }
+
+  @Transactional
+  public void markReceiptSent(String orderReference) {
+    orderProcessingService
+        .resolveOrder(orderReference)
+        .ifPresent(
+            order -> {
+              order.setReceiptSentAt(Instant.now());
+              orderRepository.save(order);
+            });
   }
 
   private boolean sendReceiptEmailInternal(OrderResponse order) {
