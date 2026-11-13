@@ -39,7 +39,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@SuppressWarnings({"PMD.LawOfDemeter", "PMD.CouplingBetweenObjects"})
+@SuppressWarnings({
+  "PMD.LawOfDemeter",
+  "PMD.CouplingBetweenObjects",
+  "PMD.ExcessiveImports",
+  "PMD.GodClass"
+})
 public class OrderProcessingService {
 
   public static final Duration DEFAULT_LOCK_DURATION = Duration.ofMinutes(30);

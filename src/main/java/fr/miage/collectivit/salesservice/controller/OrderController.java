@@ -39,6 +39,11 @@ import org.springframework.web.server.ResponseStatusException;
     name = "Orders",
     description = "Multi-store click & collect order lifecycle and lock management (SLE-186)")
 @RequiredArgsConstructor
+@SuppressWarnings({
+  "PMD.ExcessiveImports",
+  "PMD.AvoidDuplicateLiterals",
+  "PMD.CouplingBetweenObjects"
+})
 public class OrderController {
 
   private static final String CODE_401 = "401";

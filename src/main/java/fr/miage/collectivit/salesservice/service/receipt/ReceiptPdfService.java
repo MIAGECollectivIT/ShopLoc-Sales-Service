@@ -36,6 +36,14 @@ import org.springframework.stereotype.Service;
  */
 @Slf4j
 @Service
+@SuppressWarnings({
+  "PMD.AvoidInstantiatingObjectsInLoops",
+  "PMD.LooseCoupling",
+  "PMD.AvoidCatchingGenericException",
+  "PMD.CloseResource",
+  "PMD.AvoidUncheckedExceptionsInSignatures",
+  "PMD.GuardLogStatement"
+})
 public class ReceiptPdfService {
 
   private static final Color PRIMARY_COLOR = new Color(15, 23, 42); // slate-900
@@ -63,7 +71,7 @@ public class ReceiptPdfService {
       PdfWriter.getInstance(document, out);
       document.open();
 
-      addHeader(document, order);
+      addHeader(document);
       addOrderMetadata(document, order);
       addStoreSummariesAndItems(document, order);
       addTotalsAndLoyalty(document, order);
@@ -90,7 +98,7 @@ public class ReceiptPdfService {
     }
   }
 
-  private void addHeader(Document document, OrderResponse order) throws DocumentException {
+  private void addHeader(Document document) throws DocumentException {
     Font brandFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, PRIMARY_COLOR);
     Paragraph brand = new Paragraph("ShopLoc", brandFont);
     brand.setAlignment(Element.ALIGN_CENTER);

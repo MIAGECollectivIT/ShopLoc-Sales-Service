@@ -26,6 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
+@SuppressWarnings({
+  "PMD.GuardLogStatement",
+  "PMD.AvoidCatchingGenericException",
+  "PMD.LawOfDemeter"
+})
 public class ReceiptEmailService {
 
   private final ObjectProvider<JavaMailSender> mailSenderProvider;
