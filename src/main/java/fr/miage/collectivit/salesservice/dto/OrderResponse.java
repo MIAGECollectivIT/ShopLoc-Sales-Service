@@ -28,7 +28,39 @@ public record OrderResponse(
     @Schema(description = "Creation timestamp") Instant createdAt,
     @Schema(description = "Breakdown summaries per merchant store")
         List<OrderStoreSummaryResponse> storeSummaries,
-    @Schema(description = "All order items") List<OrderItemResponse> items) {
+    @Schema(description = "All order items") List<OrderItemResponse> items,
+    @Schema(description = "Receipt email transmission timestamp if sent") Instant receiptSentAt) {
+
+  public OrderResponse(
+      Long id,
+      UUID uid,
+      String orderReference,
+      String customerId,
+      String customerEmail,
+      String clientCode,
+      BigDecimal totalAmount,
+      String currency,
+      String status,
+      Instant expiresAt,
+      Instant createdAt,
+      List<OrderStoreSummaryResponse> storeSummaries,
+      List<OrderItemResponse> items) {
+    this(
+        id,
+        uid,
+        orderReference,
+        customerId,
+        customerEmail,
+        clientCode,
+        totalAmount,
+        currency,
+        status,
+        expiresAt,
+        createdAt,
+        storeSummaries,
+        items,
+        null);
+  }
 
   public OrderResponse(
       Long id,
@@ -56,6 +88,7 @@ public record OrderResponse(
         expiresAt,
         createdAt,
         storeSummaries,
-        items);
+        items,
+        null);
   }
 }

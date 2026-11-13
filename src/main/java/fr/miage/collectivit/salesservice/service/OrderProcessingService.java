@@ -12,6 +12,7 @@ import fr.miage.collectivit.salesservice.model.OrderItem;
 import fr.miage.collectivit.salesservice.model.OrderStatus;
 import fr.miage.collectivit.salesservice.repository.OrderRepository;
 import fr.miage.collectivit.salesservice.security.UserRole;
+import fr.miage.collectivit.salesservice.service.receipt.OrderPaidEvent;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -27,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +47,7 @@ public class OrderProcessingService {
 
   private final OrderRepository orderRepository;
   private final StoreClient storeClient;
+  private final ApplicationEventPublisher applicationEventPublisher;
 
   @Transactional
   public OrderResponse createOrder(
@@ -187,6 +190,10 @@ public class OrderProcessingService {
     order.setUpdatedAt(Instant.now());
     Order updated = orderRepository.save(order);
 
+    if (status == OrderStatus.PAID) {
+      applicationEventPublisher.publishEvent(new OrderPaidEvent(updated.getOrderReference()));
+    }
+
     if (log.isInfoEnabled()) {
       log.info("Order status updated: identifier={}, newStatus={}", identifier, status);
     }
@@ -249,7 +256,8 @@ public class OrderProcessingService {
         order.getExpiresAt(),
         order.getCreatedAt(),
         storeSummaries,
-        itemResponses);
+        itemResponses,
+        order.getReceiptSentAt());
   }
 
   @SuppressWarnings("PMD.AvoidCatchingGenericException")

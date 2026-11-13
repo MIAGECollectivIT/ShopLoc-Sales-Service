@@ -6,6 +6,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -20,16 +22,21 @@ import fr.miage.collectivit.salesservice.dto.UpdateOrderStatusRequest;
 import fr.miage.collectivit.salesservice.exception.GlobalExceptionHandler;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
 import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
+import fr.miage.collectivit.salesservice.security.UserRole;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
+import fr.miage.collectivit.salesservice.service.receipt.ReceiptEmailService;
+import fr.miage.collectivit.salesservice.service.receipt.ReceiptPdfService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -39,6 +46,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class OrderControllerTest {
 
   @Mock private OrderProcessingService orderProcessingService;
+  @Mock private ReceiptPdfService receiptPdfService;
+  @Mock private ReceiptEmailService receiptEmailService;
 
   private MockMvc mockMvc;
   private ObjectMapper objectMapper;
@@ -46,7 +55,8 @@ class OrderControllerTest {
   @BeforeEach
   void setUp() {
     mockMvc =
-        MockMvcBuilders.standaloneSetup(new OrderController(orderProcessingService))
+        MockMvcBuilders.standaloneSetup(
+                new OrderController(orderProcessingService, receiptPdfService, receiptEmailService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
 
@@ -371,5 +381,145 @@ class OrderControllerTest {
                 .content("{not-a-valid-json}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.message").value("Malformed JSON request payload"));
+  }
+
+  @Test
+  @DisplayName(
+      "GET /v1/sales/orders/{identifier}/receipt should return 200 OK with PDF bytes when order is PAID")
+  void shouldDownloadReceiptSuccessfullyWhenPaid() throws Exception {
+    String ref = "CMD-CC-20261113-1111";
+    OrderResponse paidOrder =
+        new OrderResponse(
+            1L,
+            UUID.randomUUID(),
+            ref,
+            "user-10",
+            "client@example.com",
+            "CLT-10",
+            new BigDecimal("20.00"),
+            "EUR",
+            "PAID",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of(),
+            null);
+
+    org.mockito.Mockito.when(orderProcessingService.getOrderByReference(ref)).thenReturn(paidOrder);
+    org.mockito.Mockito.when(receiptPdfService.generateReceiptPdf(paidOrder))
+        .thenReturn("%PDF-1.4 test bytes".getBytes());
+
+    mockMvc
+        .perform(
+            get("/v1/sales/orders/" + ref + "/receipt")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.CLIENT.name())
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "user-10"))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+        .andExpect(
+            header()
+                .string(
+                    HttpHeaders.CONTENT_DISPOSITION,
+                    "attachment; filename=\"preuve-achat-" + ref + ".pdf\""));
+  }
+
+  @Test
+  @DisplayName(
+      "GET /v1/sales/orders/{identifier}/receipt should return 409 Conflict when order is not PAID")
+  void shouldReturn409WhenDownloadingReceiptForUnpaidOrder() throws Exception {
+    String ref = "CMD-CC-20261113-2222";
+    OrderResponse pendingOrder =
+        new OrderResponse(
+            2L,
+            UUID.randomUUID(),
+            ref,
+            "user-10",
+            "client@example.com",
+            "CLT-10",
+            new BigDecimal("20.00"),
+            "EUR",
+            "PENDING_PAYMENT",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of(),
+            null);
+
+    org.mockito.Mockito.when(orderProcessingService.getOrderByReference(ref))
+        .thenReturn(pendingOrder);
+
+    mockMvc
+        .perform(
+            get("/v1/sales/orders/" + ref + "/receipt")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.CLIENT.name())
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "user-10"))
+        .andExpect(status().isConflict());
+  }
+
+  @Test
+  @DisplayName(
+      "GET /v1/sales/orders/{identifier}/receipt should return 403 Forbidden when caller is not owner")
+  void shouldReturn403WhenCallerNotOwnerOfReceipt() throws Exception {
+    String ref = "CMD-CC-20261113-3333";
+    OrderResponse paidOrder =
+        new OrderResponse(
+            3L,
+            UUID.randomUUID(),
+            ref,
+            "user-10",
+            "client@example.com",
+            "CLT-10",
+            new BigDecimal("20.00"),
+            "EUR",
+            "PAID",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of(),
+            null);
+
+    org.mockito.Mockito.when(orderProcessingService.getOrderByReference(ref)).thenReturn(paidOrder);
+
+    mockMvc
+        .perform(
+            get("/v1/sales/orders/" + ref + "/receipt")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.CLIENT.name())
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "user-intruder"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName(
+      "POST /v1/sales/orders/{identifier}/resend-receipt should resend email when caller is owner")
+  void shouldResendReceiptSuccessfullyWhenOwner() throws Exception {
+    String ref = "CMD-CC-20261113-4444";
+    OrderResponse paidOrder =
+        new OrderResponse(
+            4L,
+            UUID.randomUUID(),
+            ref,
+            "user-10",
+            "client@example.com",
+            "CLT-10",
+            new BigDecimal("20.00"),
+            "EUR",
+            "PAID",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of(),
+            null);
+
+    org.mockito.Mockito.when(orderProcessingService.getOrderByReference(ref)).thenReturn(paidOrder);
+    org.mockito.Mockito.when(receiptEmailService.resendReceiptEmail(ref)).thenReturn(true);
+
+    mockMvc
+        .perform(
+            post("/v1/sales/orders/" + ref + "/resend-receipt")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.CLIENT.name())
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "user-10"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.orderReference").value(ref));
   }
 }
