@@ -39,6 +39,7 @@ class WalletServiceTest {
   @Mock private WalletRepository walletRepository;
   @Mock private WalletTransactionRepository walletTransactionRepository;
   @Mock private PaymentService paymentService;
+  @Mock private WalletAuditService walletAuditService;
 
   @InjectMocks private WalletService walletService;
 
@@ -170,7 +171,37 @@ class WalletServiceTest {
   }
 
   @Test
-  @DisplayName("SLE-15: Do not credit wallet when bank payment fails with exception")
+  @DisplayName("SLE-15: Reject reload when idempotency key is expired (> 24h)")
+  void shouldRejectReloadWhenIdempotencyKeyExpired() {
+    WalletTransaction oldTx =
+        WalletTransaction.builder()
+            .id(99L)
+            .userId(USER_ID)
+            .transactionReference("WTX-OLD")
+            .amount(new BigDecimal("30.00"))
+            .type(WalletTransactionType.TOPUP)
+            .status("SUCCESS")
+            .idempotencyKey("idem-expired")
+            .balanceAfter(new BigDecimal("20.00"))
+            .createdAt(Instant.now().minus(25, java.time.temporal.ChronoUnit.HOURS))
+            .build();
+
+    when(walletTransactionRepository.findByUserIdAndIdempotencyKey(USER_ID, "idem-expired"))
+        .thenReturn(Optional.of(oldTx));
+
+    WalletReloadRequest reloadRequest =
+        new WalletReloadRequest(new BigDecimal("30.00"), "tok_visa_4242", "idem-expired");
+
+    assertThatThrownBy(() -> walletService.reload(USER_ID, reloadRequest, "idem-expired"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("La clé d'idempotence a expiré");
+
+    verify(paymentService, never()).authorizePayment(any(), any());
+  }
+
+  @Test
+  @DisplayName(
+      "SLE-15: Do not credit wallet when bank payment fails with exception and record audit failure")
   void shouldNotCreditWalletWhenBankFails() {
     when(paymentService.authorizePayment(any(PaymentAuthorizationRequest.class), eq(USER_ID)))
         .thenThrow(new RuntimeException("Bank gateway communication error"));
@@ -184,6 +215,9 @@ class WalletServiceTest {
 
     verify(walletRepository, never()).save(any(Wallet.class));
     verify(walletTransactionRepository, never()).save(any(WalletTransaction.class));
+    verify(walletAuditService)
+        .recordFailedReload(
+            eq(USER_ID), eq(new BigDecimal("30.00")), eq("Bank gateway communication error"));
   }
 
   @Test

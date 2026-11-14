@@ -32,19 +32,25 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@SuppressWarnings({"PMD.LawOfDemeter", "PMD.AvoidDuplicateLiterals"})
+@SuppressWarnings({
+  "PMD.LawOfDemeter",
+  "PMD.AvoidDuplicateLiterals",
+  "PMD.AvoidCatchingGenericException"
+})
 public class WalletService {
 
   public static final BigDecimal MIN_RELOAD_AMOUNT = new BigDecimal("5.00");
   public static final BigDecimal MAX_RELOAD_AMOUNT = new BigDecimal("100.00");
   public static final BigDecimal MAX_WEEKLY_RELOAD_AMOUNT = new BigDecimal("250.00");
   public static final int ROLLING_LIMIT_DAYS = 7;
+  public static final int IDEMPOTENCY_TTL_HOURS = 24;
   private static final String DEFAULT_CURRENCY = "EUR";
   private static final String DEFAULT_PAYMENT_TOKEN = "tok_visa_4242";
 
   private final WalletRepository walletRepository;
   private final WalletTransactionRepository walletTransactionRepository;
   private final PaymentService paymentService;
+  private final WalletAuditService walletAuditService;
 
   /** Retrieves or provisions the wallet for the given citizen user (SLE-17). */
   @Transactional
@@ -151,8 +157,13 @@ public class WalletService {
         new PaymentAuthorizationRequest(amount, DEFAULT_CURRENCY, paymentReference, paymentToken);
 
     // Call external bank gateway through PaymentService (RG001 verification)
-    PaymentAuthorizationResponse payResponse =
-        paymentService.authorizePayment(payRequest, trimmedUserId);
+    PaymentAuthorizationResponse payResponse;
+    try {
+      payResponse = paymentService.authorizePayment(payRequest, trimmedUserId);
+    } catch (RuntimeException ex) {
+      walletAuditService.recordFailedReload(trimmedUserId, amount, ex.getMessage());
+      throw ex;
+    }
 
     // Credit the wallet with row-level pessimistic locking
     Wallet wallet = getOrCreateWalletEntityForUpdate(trimmedUserId);
@@ -203,17 +214,25 @@ public class WalletService {
     }
     Optional<WalletTransaction> existingTx =
         walletTransactionRepository.findByUserIdAndIdempotencyKey(userId, effectiveKey);
-    if (existingTx.isPresent()) {
-      if (log.isInfoEnabled()) {
-        log.info(
-            "Idempotent reload replayed for user {} with key {}: txRef={}",
-            userId,
-            effectiveKey,
-            existingTx.get().getTransactionReference());
-      }
-      return Optional.of(getWallet(userId));
+    if (existingTx.isEmpty()) {
+      return Optional.empty();
     }
-    return Optional.empty();
+
+    WalletTransaction tx = existingTx.get();
+    Instant cutoff = Instant.now().minus(IDEMPOTENCY_TTL_HOURS, ChronoUnit.HOURS);
+    if (!tx.getCreatedAt().isAfter(cutoff)) {
+      throw new IllegalArgumentException(
+          "La clé d'idempotence a expiré (durée de validité : 24 heures). Veuillez renouveler l'opération avec une nouvelle clé.");
+    }
+
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Idempotent reload replayed for user {} with key {}: txRef={}",
+          userId,
+          effectiveKey,
+          tx.getTransactionReference());
+    }
+    return Optional.of(getWallet(userId));
   }
 
   private void verifyWeeklyReloadLimit(String userId, BigDecimal amount) {
