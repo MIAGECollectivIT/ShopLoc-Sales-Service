@@ -84,7 +84,7 @@ class WalletServiceTest {
   @Test
   @DisplayName("SLE-15: Reload wallet with valid amount between 5€ and 100€")
   void shouldReloadWalletSuccessfully() {
-    when(walletRepository.findByUserId(USER_ID)).thenReturn(Optional.of(wallet));
+    when(walletRepository.findByUserIdForUpdate(USER_ID)).thenReturn(Optional.of(wallet));
     when(walletRepository.save(any(Wallet.class))).thenAnswer(i -> i.getArgument(0));
 
     PaymentAuthorizationResponse mockAuth =
@@ -165,7 +165,7 @@ class WalletServiceTest {
   @Test
   @DisplayName("SLE-18: Debit wallet for in-store purchase with partner store name")
   void shouldDebitWalletSuccessfully() {
-    when(walletRepository.findByUserId(USER_ID)).thenReturn(Optional.of(wallet));
+    when(walletRepository.findByUserIdForUpdate(USER_ID)).thenReturn(Optional.of(wallet));
     when(walletRepository.save(any(Wallet.class))).thenAnswer(i -> i.getArgument(0));
 
     WalletDebitRequest debitRequest =
@@ -181,7 +181,7 @@ class WalletServiceTest {
   @Test
   @DisplayName("SLE-18: Reject debit when wallet funds are insufficient")
   void shouldRejectDebitWhenInsufficientFunds() {
-    when(walletRepository.findByUserId(USER_ID)).thenReturn(Optional.of(wallet));
+    when(walletRepository.findByUserIdForUpdate(USER_ID)).thenReturn(Optional.of(wallet));
 
     WalletDebitRequest debitRequest =
         new WalletDebitRequest(

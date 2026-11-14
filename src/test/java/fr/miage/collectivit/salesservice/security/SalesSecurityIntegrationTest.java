@@ -240,18 +240,16 @@ class SalesSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName("POST /v1/sales/wallet/debit with MERCHANT role -> should pass security interceptor")
-  void shouldAllowDebitWalletForMerchantRole() throws Exception {
+  @DisplayName("POST /v1/sales/wallet/debit with MERCHANT role -> should return 403 Forbidden")
+  void shouldDenyDebitWalletForMerchantRole() throws Exception {
     String token =
         generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
-    // Security check passes; business logic returns 400 (insufficient balance) rather than 403
-    // Forbidden
     mockMvc
         .perform(
             post("/v1/sales/wallet/debit")
                 .header("Authorization", "Bearer " + token)
                 .contentType("application/json")
                 .content("{\"amount\":10.00}"))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isForbidden());
   }
 }

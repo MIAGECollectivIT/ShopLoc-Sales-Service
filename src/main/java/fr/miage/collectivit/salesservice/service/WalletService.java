@@ -62,6 +62,18 @@ public class WalletService {
                         .build()));
   }
 
+  /**
+   * Retrieves or provisions the wallet with a pessimistic write lock (SELECT FOR UPDATE) to
+   * strictly serialize concurrent modifications and prevent double-spending race conditions.
+   */
+  @Transactional
+  public Wallet getOrCreateWalletEntityForUpdate(String userId) {
+    String trimmedUserId = userId.trim();
+    return walletRepository
+        .findByUserIdForUpdate(trimmedUserId)
+        .orElseGet(() -> getOrCreateWalletEntity(trimmedUserId));
+  }
+
   /** Retrieves the current real-time balance of the citizen's wallet (SLE-17). */
   @Transactional(readOnly = true)
   public WalletResponse getWallet(String userId) {
@@ -101,8 +113,8 @@ public class WalletService {
     PaymentAuthorizationResponse payResponse =
         paymentService.authorizePayment(payRequest, userId.trim());
 
-    // Credit the wallet
-    Wallet wallet = getOrCreateWalletEntity(userId);
+    // Credit the wallet with row-level pessimistic locking
+    Wallet wallet = getOrCreateWalletEntityForUpdate(userId);
     BigDecimal newBalance = wallet.getBalance().add(amount).setScale(2, RoundingMode.HALF_UP);
     wallet.setBalance(newBalance);
     Wallet savedWallet = walletRepository.save(wallet);
@@ -150,7 +162,8 @@ public class WalletService {
       throw new IllegalArgumentException("Le montant du débit doit être supérieur à zéro.");
     }
 
-    Wallet wallet = getOrCreateWalletEntity(userId);
+    // Debit the wallet with row-level pessimistic locking
+    Wallet wallet = getOrCreateWalletEntityForUpdate(userId);
     if (wallet.getBalance().compareTo(amount) < 0) {
       throw new InsufficientWalletBalanceException(
           "Solde insuffisant sur votre porte-monnaie (solde disponible : "

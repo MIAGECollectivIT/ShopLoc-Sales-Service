@@ -100,7 +100,7 @@ public class WalletController {
   }
 
   @PostMapping("/debit")
-  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
+  @RequiresRole({UserRole.CLIENT, UserRole.ADMIN})
   @Operation(
       summary = "Debit wallet for a purchase (SLE-18)",
       description =
@@ -123,16 +123,15 @@ public class WalletController {
     String authUserId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
     String authRole = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
 
+    // Only administrators are permitted to query or operate on behalf of another user ID
     if (UserRole.ADMIN.name().equalsIgnoreCase(authRole)
         && requestedUserId != null
         && !requestedUserId.isBlank()) {
       return requestedUserId.trim();
     }
+    // All other users are strictly bound to their authenticated token subject
     if (authUserId != null && !authUserId.isBlank()) {
       return authUserId.trim();
-    }
-    if (requestedUserId != null && !requestedUserId.isBlank()) {
-      return requestedUserId.trim();
     }
     throw new ForbiddenException("Missing authenticated user context");
   }
