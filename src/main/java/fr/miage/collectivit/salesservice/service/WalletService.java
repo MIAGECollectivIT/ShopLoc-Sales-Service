@@ -20,8 +20,6 @@ import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -223,14 +221,6 @@ public class WalletService {
     return walletTransactionRepository.findByUserIdOrderByCreatedAtDesc(userId.trim()).stream()
         .map(WalletTransactionResponse::fromEntity)
         .toList();
-  }
-
-  /** Returns paged transaction history for the citizen (SLE-18). */
-  @Transactional(readOnly = true)
-  public Page<WalletTransactionResponse> getTransactions(String userId, Pageable pageable) {
-    return walletTransactionRepository
-        .findByUserIdOrderByCreatedAtDesc(userId.trim(), pageable)
-        .map(WalletTransactionResponse::fromEntity);
   }
 
   private void validateReloadAmount(BigDecimal amount) {
