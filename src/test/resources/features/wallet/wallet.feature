@@ -40,6 +40,21 @@ Feature: Digital Wallet Management (SLE-15, SLE-17, SLE-18)
     When the client requests their wallet transaction history
     Then the HTTP response status should be 200
 
+  Scenario: Idempotent replay on duplicate reload request with same key (SLE-15)
+    Given an authenticated user with role "CLIENT"
+    When the client reloads their wallet with amount "25.00" EUR and idempotency key "bdd-idem-key-1"
+    Then the HTTP response status should be 200
+    When the client reloads their wallet with amount "25.00" EUR and idempotency key "bdd-idem-key-1"
+    Then the HTTP response status should be 200
+
+  Scenario: Reject reload when 7-day rolling limit of 250 EUR is exceeded (SLE-15)
+    Given an authenticated user with role "CLIENT"
+    When the client reloads their wallet with amount "100.00" EUR
+    And the client reloads their wallet with amount "100.00" EUR
+    And the client reloads their wallet with amount "50.00" EUR
+    And the client reloads their wallet with amount "10.00" EUR
+    Then the HTTP response status should be 400
+
   Scenario: Forbid wallet access for MERCHANT role
     Given an authenticated user with role "MERCHANT"
     When the client consults their wallet balance

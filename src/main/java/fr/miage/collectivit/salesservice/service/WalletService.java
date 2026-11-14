@@ -15,8 +15,10 @@ import fr.miage.collectivit.salesservice.repository.WalletTransactionRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,8 @@ public class WalletService {
 
   public static final BigDecimal MIN_RELOAD_AMOUNT = new BigDecimal("5.00");
   public static final BigDecimal MAX_RELOAD_AMOUNT = new BigDecimal("100.00");
+  public static final BigDecimal MAX_WEEKLY_RELOAD_AMOUNT = new BigDecimal("250.00");
+  public static final int ROLLING_LIMIT_DAYS = 7;
   private static final String DEFAULT_CURRENCY = "EUR";
   private static final String DEFAULT_PAYMENT_TOKEN = "tok_visa_4242";
 
@@ -72,21 +76,42 @@ public class WalletService {
         .orElseGet(() -> getOrCreateWalletEntity(trimmedUserId));
   }
 
+  /**
+   * Calculates the remaining available reload amount for the citizen over a rolling 7-day window.
+   */
+  @Transactional(readOnly = true)
+  public BigDecimal getWeeklyReloadRemaining(String userId) {
+    Instant sevenDaysAgo = Instant.now().minus(ROLLING_LIMIT_DAYS, ChronoUnit.DAYS);
+    BigDecimal sumRecent =
+        walletTransactionRepository.sumAmountByUserIdAndTypeAndCreatedAtAfter(
+            userId.trim(), WalletTransactionType.TOPUP, sevenDaysAgo);
+    if (sumRecent == null) {
+      sumRecent = BigDecimal.ZERO;
+    }
+    BigDecimal remaining = MAX_WEEKLY_RELOAD_AMOUNT.subtract(sumRecent);
+    return remaining.compareTo(BigDecimal.ZERO) < 0
+        ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+        : remaining.setScale(2, RoundingMode.HALF_UP);
+  }
+
   /** Retrieves the current real-time balance of the citizen's wallet (SLE-17). */
   @Transactional(readOnly = true)
   public WalletResponse getWallet(String userId) {
+    String trimmedUserId = userId.trim();
+    BigDecimal weeklyRemaining = getWeeklyReloadRemaining(trimmedUserId);
     return walletRepository
-        .findByUserId(userId.trim())
-        .map(WalletResponse::fromEntity)
+        .findByUserId(trimmedUserId)
+        .map(wallet -> WalletResponse.fromEntity(wallet, weeklyRemaining))
         .orElseGet(
             () ->
                 new WalletResponse(
                     null,
-                    userId.trim(),
+                    trimmedUserId,
                     BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
                     DEFAULT_CURRENCY,
                     Instant.now(),
-                    Instant.now()));
+                    Instant.now(),
+                    weeklyRemaining));
   }
 
   /**
@@ -95,8 +120,26 @@ public class WalletService {
    */
   @Transactional
   public WalletResponse reload(String userId, WalletReloadRequest request) {
+    return reload(userId, request, request != null ? request.idempotencyKey() : null);
+  }
+
+  /**
+   * Reloads the citizen wallet with idempotency replay protection and 7-day rolling limit check.
+   */
+  @Transactional
+  public WalletResponse reload(String userId, WalletReloadRequest request, String idempotencyKey) {
+    String trimmedUserId = userId.trim();
+    String effectiveKey =
+        (idempotencyKey != null && !idempotencyKey.isBlank()) ? idempotencyKey.trim() : null;
+
+    Optional<WalletResponse> replayed = checkIdempotentReload(trimmedUserId, effectiveKey);
+    if (replayed.isPresent()) {
+      return replayed.get();
+    }
+
     BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_UP);
     validateReloadAmount(amount);
+    verifyWeeklyReloadLimit(trimmedUserId, amount);
 
     String paymentToken =
         (request.paymentToken() != null && !request.paymentToken().isBlank())
@@ -109,10 +152,10 @@ public class WalletService {
 
     // Call external bank gateway through PaymentService (RG001 verification)
     PaymentAuthorizationResponse payResponse =
-        paymentService.authorizePayment(payRequest, userId.trim());
+        paymentService.authorizePayment(payRequest, trimmedUserId);
 
     // Credit the wallet with row-level pessimistic locking
-    Wallet wallet = getOrCreateWalletEntityForUpdate(userId);
+    Wallet wallet = getOrCreateWalletEntityForUpdate(trimmedUserId);
     BigDecimal newBalance = wallet.getBalance().add(amount).setScale(2, RoundingMode.HALF_UP);
     wallet.setBalance(newBalance);
     Wallet savedWallet = walletRepository.save(wallet);
@@ -128,7 +171,7 @@ public class WalletService {
     WalletTransaction tx =
         WalletTransaction.builder()
             .wallet(savedWallet)
-            .userId(userId.trim())
+            .userId(trimmedUserId)
             .transactionReference(txRef)
             .amount(amount)
             .type(WalletTransactionType.TOPUP)
@@ -136,20 +179,53 @@ public class WalletService {
             .paymentReference(payResponse.reference())
             .description("Rechargement porte-monnaie par carte bancaire")
             .balanceAfter(newBalance)
+            .idempotencyKey(effectiveKey)
             .createdAt(Instant.now())
             .build();
     walletTransactionRepository.save(tx);
 
     if (log.isInfoEnabled()) {
       log.info(
-          "Wallet successfully reloaded: userId={}, amount={} EUR, newBalance={} EUR, txRef={}",
-          userId,
+          "Wallet successfully reloaded: userId={}, amount={} EUR, newBalance={} EUR, txRef={}, idempotencyKey={}",
+          trimmedUserId,
           amount,
           newBalance,
-          txRef);
+          txRef,
+          effectiveKey);
     }
 
-    return WalletResponse.fromEntity(savedWallet);
+    return WalletResponse.fromEntity(savedWallet, getWeeklyReloadRemaining(trimmedUserId));
+  }
+
+  private Optional<WalletResponse> checkIdempotentReload(String userId, String effectiveKey) {
+    if (effectiveKey == null) {
+      return Optional.empty();
+    }
+    Optional<WalletTransaction> existingTx =
+        walletTransactionRepository.findByUserIdAndIdempotencyKey(userId, effectiveKey);
+    if (existingTx.isPresent()) {
+      if (log.isInfoEnabled()) {
+        log.info(
+            "Idempotent reload replayed for user {} with key {}: txRef={}",
+            userId,
+            effectiveKey,
+            existingTx.get().getTransactionReference());
+      }
+      return Optional.of(getWallet(userId));
+    }
+    return Optional.empty();
+  }
+
+  private void verifyWeeklyReloadLimit(String userId, BigDecimal amount) {
+    BigDecimal remainingLimit = getWeeklyReloadRemaining(userId);
+    if (amount.compareTo(remainingLimit) > 0) {
+      throw new IllegalArgumentException(
+          "Plafond hebdomadaire de rechargement dépassé. Montant disponible sur 7 jours glissants : "
+              + remainingLimit
+              + " € (maximum : "
+              + MAX_WEEKLY_RELOAD_AMOUNT
+              + " €).");
+    }
   }
 
   /** Debits the citizen wallet for in-store or click & collect purchases (SLE-18). */

@@ -110,6 +110,66 @@ class WalletServiceTest {
   }
 
   @Test
+  @DisplayName(
+      "SLE-15: Replay existing wallet without charging when idempotency key already processed")
+  void shouldReplayExistingTransactionWhenIdempotencyKeyMatches() {
+    WalletTransaction existingTx =
+        WalletTransaction.builder()
+            .id(99L)
+            .userId(USER_ID)
+            .transactionReference("WTX-EXISTING")
+            .amount(new BigDecimal("30.00"))
+            .type(WalletTransactionType.TOPUP)
+            .status("SUCCESS")
+            .idempotencyKey("idem-key-duplicate")
+            .balanceAfter(new BigDecimal("20.00"))
+            .createdAt(Instant.now())
+            .build();
+
+    when(walletTransactionRepository.findByUserIdAndIdempotencyKey(USER_ID, "idem-key-duplicate"))
+        .thenReturn(Optional.of(existingTx));
+    when(walletRepository.findByUserId(USER_ID)).thenReturn(Optional.of(wallet));
+
+    WalletReloadRequest reloadRequest =
+        new WalletReloadRequest(new BigDecimal("30.00"), "tok_visa_4242", "idem-key-duplicate");
+
+    WalletResponse response = walletService.reload(USER_ID, reloadRequest, "idem-key-duplicate");
+
+    assertThat(response.balance()).isEqualByComparingTo("20.00");
+    verify(paymentService, never()).authorizePayment(any(), any());
+    verify(walletRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("SLE-15: Reject reload when 7-day rolling limit (250 €) is exceeded")
+  void shouldRejectReloadWhenWeeklyLimitExceeded() {
+    when(walletTransactionRepository.sumAmountByUserIdAndTypeAndCreatedAtAfter(
+            eq(USER_ID), eq(WalletTransactionType.TOPUP), any(Instant.class)))
+        .thenReturn(new BigDecimal("230.00"));
+
+    WalletReloadRequest reloadRequest =
+        new WalletReloadRequest(new BigDecimal("30.00"), "tok_visa_4242");
+
+    assertThatThrownBy(() -> walletService.reload(USER_ID, reloadRequest))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Plafond hebdomadaire de rechargement dépassé");
+
+    verify(paymentService, never()).authorizePayment(any(), any());
+  }
+
+  @Test
+  @DisplayName("SLE-15: Calculate remaining weekly reload limit accurately")
+  void shouldCalculateRemainingWeeklyLimitCorrectly() {
+    when(walletTransactionRepository.sumAmountByUserIdAndTypeAndCreatedAtAfter(
+            eq(USER_ID), eq(WalletTransactionType.TOPUP), any(Instant.class)))
+        .thenReturn(new BigDecimal("80.00"));
+
+    BigDecimal remaining = walletService.getWeeklyReloadRemaining(USER_ID);
+
+    assertThat(remaining).isEqualByComparingTo("170.00");
+  }
+
+  @Test
   @DisplayName("SLE-15: Do not credit wallet when bank payment fails with exception")
   void shouldNotCreditWalletWhenBankFails() {
     when(paymentService.authorizePayment(any(PaymentAuthorizationRequest.class), eq(USER_ID)))

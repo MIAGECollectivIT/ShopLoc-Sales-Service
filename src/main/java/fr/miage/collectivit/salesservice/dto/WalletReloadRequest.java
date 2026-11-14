@@ -24,4 +24,14 @@ public record WalletReloadRequest(
             description = "Payment method token for bank gateway authorization",
             example = "tok_visa_4242")
         @Size(max = 128, message = "Payment token must not exceed 128 characters")
-        String paymentToken) {}
+        String paymentToken,
+    @Schema(
+            description = "Unique client-generated idempotency key to prevent duplicate reloads",
+            example = "c1a2b3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d")
+        @Size(max = 128, message = "Idempotency key must not exceed 128 characters")
+        String idempotencyKey) {
+
+  public WalletReloadRequest(BigDecimal amount, String paymentToken) {
+    this(amount, paymentToken, null);
+  }
+}

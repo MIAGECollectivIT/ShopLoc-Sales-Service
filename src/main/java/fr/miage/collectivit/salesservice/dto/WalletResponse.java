@@ -16,15 +16,34 @@ public record WalletResponse(
         BigDecimal balance,
     @Schema(description = "ISO 4217 currency code", example = "EUR") String currency,
     @Schema(description = "Creation timestamp") Instant createdAt,
-    @Schema(description = "Last update timestamp") Instant updatedAt) {
+    @Schema(description = "Last update timestamp") Instant updatedAt,
+    @Schema(
+            description = "Remaining available reload limit on rolling 7-day window",
+            example = "215.00")
+        BigDecimal weeklyReloadRemaining) {
+
+  public WalletResponse(
+      Long id,
+      String userId,
+      BigDecimal balance,
+      String currency,
+      Instant createdAt,
+      Instant updatedAt) {
+    this(id, userId, balance, currency, createdAt, updatedAt, null);
+  }
 
   public static WalletResponse fromEntity(Wallet wallet) {
+    return fromEntity(wallet, null);
+  }
+
+  public static WalletResponse fromEntity(Wallet wallet, BigDecimal weeklyReloadRemaining) {
     return new WalletResponse(
         wallet.getId(),
         wallet.getUserId(),
         wallet.getBalance(),
         wallet.getCurrency(),
         wallet.getCreatedAt(),
-        wallet.getUpdatedAt());
+        wallet.getUpdatedAt(),
+        weeklyReloadRemaining);
   }
 }

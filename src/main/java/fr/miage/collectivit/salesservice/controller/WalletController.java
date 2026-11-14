@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -68,17 +69,23 @@ public class WalletController {
     @ApiResponse(responseCode = "200", description = "Wallet reloaded successfully"),
     @ApiResponse(
         responseCode = "400",
-        description = "Invalid reload amount (outside 5€ - 100€ range)"),
+        description = "Invalid reload amount (outside 5€ - 100€ range or weekly limit exceeded)"),
     @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
     @ApiResponse(responseCode = "403", description = "Forbidden - Requires CLIENT role"),
     @ApiResponse(responseCode = "502", description = "Bank payment gateway rejected authorization")
   })
   public ResponseEntity<WalletResponse> reloadWallet(
       @Valid @RequestBody WalletReloadRequest reloadRequest,
+      @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyHeader,
       @RequestParam(value = "userId", required = false) String requestedUserId,
       HttpServletRequest request) {
     String authenticatedUserId = resolveUserId(requestedUserId, request);
-    return ResponseEntity.ok(walletService.reload(authenticatedUserId, reloadRequest));
+    String idempotencyKey =
+        (idempotencyHeader != null && !idempotencyHeader.isBlank())
+            ? idempotencyHeader.trim()
+            : reloadRequest.idempotencyKey();
+    return ResponseEntity.ok(
+        walletService.reload(authenticatedUserId, reloadRequest, idempotencyKey));
   }
 
   @GetMapping("/transactions")

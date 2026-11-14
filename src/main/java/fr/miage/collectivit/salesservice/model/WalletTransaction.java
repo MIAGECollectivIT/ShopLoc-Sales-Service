@@ -57,6 +57,9 @@ public class WalletTransaction {
   @Column(name = "payment_reference", length = 128)
   private String paymentReference;
 
+  @Column(name = "idempotency_key", length = 128)
+  private String idempotencyKey;
+
   @Column(name = "store_id")
   private Long storeId;
 

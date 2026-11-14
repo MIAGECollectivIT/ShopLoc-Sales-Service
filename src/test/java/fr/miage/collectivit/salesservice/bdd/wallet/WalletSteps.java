@@ -53,7 +53,10 @@ public class WalletSteps extends AbstractScenario {
     mockServer
         .expect(ExpectedCount.manyTimes(), requestTo(BANK_GATEWAY_AUTHORIZE_URL))
         .andExpect(method(HttpMethod.POST))
-        .andRespond(withSuccess(buildBankGatewayApprovedJson(), MediaType.APPLICATION_JSON));
+        .andRespond(
+            request ->
+                withSuccess(buildBankGatewayApprovedJson(), MediaType.APPLICATION_JSON)
+                    .createResponse(request));
   }
 
   private MockHttpServletRequestBuilder withAuth(MockHttpServletRequestBuilder builder) {
@@ -78,6 +81,21 @@ public class WalletSteps extends AbstractScenario {
     ResultActions resultActions =
         mockMvc.perform(
             withAuth(post(WALLET_ENDPOINT + "/reload"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)));
+    scenarioContext.setLastResult(resultActions);
+  }
+
+  @When("the client reloads their wallet with amount {string} EUR and idempotency key {string}")
+  public void whenClientReloadsWalletWithAmountAndIdempotencyKey(
+      String amountStr, String idempotencyKey) throws Exception {
+    BigDecimal amount = new BigDecimal(amountStr);
+    WalletReloadRequest request = new WalletReloadRequest(amount, "tok_visa_4242", idempotencyKey);
+
+    ResultActions resultActions =
+        mockMvc.perform(
+            withAuth(post(WALLET_ENDPOINT + "/reload"))
+                .header("X-Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)));
     scenarioContext.setLastResult(resultActions);

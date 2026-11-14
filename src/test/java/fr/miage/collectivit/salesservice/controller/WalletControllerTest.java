@@ -79,11 +79,13 @@ class WalletControllerTest {
     WalletResponse response =
         new WalletResponse(
             1L, USER_ID, new BigDecimal("70.50"), "EUR", Instant.now(), Instant.now());
-    when(walletService.reload(eq(USER_ID), any(WalletReloadRequest.class))).thenReturn(response);
+    when(walletService.reload(eq(USER_ID), any(WalletReloadRequest.class), any()))
+        .thenReturn(response);
 
     mockMvc
         .perform(
             post("/v1/sales/wallet/reload")
+                .header("X-Idempotency-Key", "idem-uuid-12345")
                 .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, USER_ID)
                 .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.CLIENT.name())
                 .contentType(MediaType.APPLICATION_JSON)
