@@ -1,15 +1,15 @@
-# ShopLoc Collectiv'IT Documentation
+# Documentation ShopLoc Collectiv'IT
 
-This directory contains technical specifications, architectural overviews, and implementation guides for the ShopLoc platform.
+Ce dossier regroupe les spécifications d'architecture, les guides techniques et la documentation des fonctionnalités du projet ShopLoc.
 
 ---
 
-## Document Index
+## Sommaire des Documents
 
 | Document | Description | User Stories |
 | :--- | :--- | :--- |
-| **[Digital Wallet Architecture](./wallet_architecture.md)** | Engineering details on idempotency (`X-Idempotency-Key`), fault isolation (`REQUIRES_NEW`), pessimistic row locking, 7-day rolling reload limits (RG001), IDOR prevention, and checkout integration. | **SLE-15**, **SLE-17**, **SLE-18** |
+| **[Architecture du Porte-Monnaie Numérique (Wallet)](./architecture_porte_monnaie_wallet.md)** | Détail des mécanismes d'idempotence, isolation des échecs (`REQUIRES_NEW`), verrouillage pessimiste, plafonds glissants RG001, sécurité IDOR et intégration au checkout. | **SLE-15**, **SLE-17**, **SLE-18** |
 
 ---
 
-*Updated November 2026.*
+*Mis à jour en Novembre 2026.*
