@@ -4,6 +4,8 @@ import fr.miage.collectivit.salesservice.client.BankGatewayClient;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
 import fr.miage.collectivit.salesservice.dto.UserPaymentTransactionResponse;
+import fr.miage.collectivit.salesservice.event.TransactionApprovedKafkaEvent;
+import fr.miage.collectivit.salesservice.event.TransactionEventPublisher;
 import fr.miage.collectivit.salesservice.exception.PaymentGatewayException;
 import fr.miage.collectivit.salesservice.exception.PaymentNotFoundException;
 import fr.miage.collectivit.salesservice.model.PaymentTransaction;
@@ -13,19 +15,36 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PaymentService {
 
   private final BankGatewayClient bankGatewayClient;
   private final PaymentTransactionRepository paymentTransactionRepository;
+  private final TransactionEventPublisher transactionEventPublisher;
 
+  public PaymentService(
+      BankGatewayClient bankGatewayClient,
+      PaymentTransactionRepository paymentTransactionRepository) {
+    this(bankGatewayClient, paymentTransactionRepository, null);
+  }
+
+  @Autowired
+  public PaymentService(
+      BankGatewayClient bankGatewayClient,
+      PaymentTransactionRepository paymentTransactionRepository,
+      @Autowired(required = false) TransactionEventPublisher transactionEventPublisher) {
+    this.bankGatewayClient = bankGatewayClient;
+    this.paymentTransactionRepository = paymentTransactionRepository;
+    this.transactionEventPublisher = transactionEventPublisher;
+  }
+
+  @SuppressWarnings("PMD.LawOfDemeter")
   public PaymentAuthorizationResponse authorizePayment(
       PaymentAuthorizationRequest request, String userId) {
     PaymentAuthorizationResponse gatewayResponse = bankGatewayClient.authorize(request);
@@ -58,6 +77,18 @@ public class PaymentService {
             .build();
 
     PaymentTransaction saved = paymentTransactionRepository.save(transaction);
+
+    if (transactionEventPublisher != null) {
+      Double amountValue = saved.getAmount() != null ? saved.getAmount().doubleValue() : null;
+      transactionEventPublisher.publishTransactionApproved(
+          new TransactionApprovedKafkaEvent(
+              saved.getUserId(),
+              saved.getTransactionId(),
+              saved.getReference(),
+              amountValue,
+              saved.getCurrency(),
+              saved.getCreatedAt()));
+    }
 
     if (log.isInfoEnabled()) {
       log.info(

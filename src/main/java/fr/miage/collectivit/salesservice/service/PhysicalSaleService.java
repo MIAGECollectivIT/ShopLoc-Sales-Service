@@ -4,6 +4,8 @@ import fr.miage.collectivit.salesservice.client.LoyaltyRateClient;
 import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleRequest;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleResponse;
+import fr.miage.collectivit.salesservice.event.TransactionApprovedKafkaEvent;
+import fr.miage.collectivit.salesservice.event.TransactionEventPublisher;
 import fr.miage.collectivit.salesservice.exception.PhysicalSaleNotFoundException;
 import fr.miage.collectivit.salesservice.model.PhysicalSaleTransaction;
 import fr.miage.collectivit.salesservice.repository.PhysicalSaleTransactionRepository;
@@ -14,14 +16,13 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PhysicalSaleService {
 
   private static final DateTimeFormatter DATE_FORMATTER =
@@ -29,8 +30,26 @@ public class PhysicalSaleService {
 
   private final PhysicalSaleTransactionRepository physicalSaleTransactionRepository;
   private final LoyaltyRateClient loyaltyRateClient;
+  private final TransactionEventPublisher transactionEventPublisher;
+
+  public PhysicalSaleService(
+      PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
+      LoyaltyRateClient loyaltyRateClient) {
+    this(physicalSaleTransactionRepository, loyaltyRateClient, null);
+  }
+
+  @Autowired
+  public PhysicalSaleService(
+      PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
+      LoyaltyRateClient loyaltyRateClient,
+      @Autowired(required = false) TransactionEventPublisher transactionEventPublisher) {
+    this.physicalSaleTransactionRepository = physicalSaleTransactionRepository;
+    this.loyaltyRateClient = loyaltyRateClient;
+    this.transactionEventPublisher = transactionEventPublisher;
+  }
 
   @Transactional
+  @SuppressWarnings("PMD.LawOfDemeter")
   public PhysicalSaleResponse recordPhysicalSale(PhysicalSaleRequest request, String callerUserId) {
     MerchantLoyaltyRateDto loyaltyRate = loyaltyRateClient.getStoreLoyaltyRate(request.storeId());
 
@@ -69,6 +88,18 @@ public class PhysicalSaleService {
             .build();
 
     PhysicalSaleTransaction saved = physicalSaleTransactionRepository.save(transaction);
+
+    if (transactionEventPublisher != null && hasText(saved.getCustomerId())) {
+      Double amountValue = saved.getAmount() != null ? saved.getAmount().doubleValue() : null;
+      transactionEventPublisher.publishTransactionApproved(
+          new TransactionApprovedKafkaEvent(
+              saved.getCustomerId().trim(),
+              saved.getTransactionReference(),
+              saved.getTransactionReference(),
+              amountValue,
+              saved.getCurrency(),
+              saved.getCreatedAt()));
+    }
 
     if (log.isInfoEnabled()) {
       log.info(
