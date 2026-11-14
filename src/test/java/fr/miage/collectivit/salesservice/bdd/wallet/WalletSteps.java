@@ -11,6 +11,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import fr.miage.collectivit.salesservice.bdd.common.AbstractScenario;
 import fr.miage.collectivit.salesservice.bdd.common.ScenarioContext;
 import fr.miage.collectivit.salesservice.client.BankGatewayClient;
+import fr.miage.collectivit.salesservice.dto.WalletDebitRequest;
 import fr.miage.collectivit.salesservice.dto.WalletReloadRequest;
 import io.cucumber.java.Before;
 import io.cucumber.java.en.When;
@@ -22,6 +23,7 @@ import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.context.WebApplicationContext;
@@ -54,13 +56,17 @@ public class WalletSteps extends AbstractScenario {
         .andRespond(withSuccess(buildBankGatewayApprovedJson(), MediaType.APPLICATION_JSON));
   }
 
+  private MockHttpServletRequestBuilder withAuth(MockHttpServletRequestBuilder builder) {
+    if (scenarioContext.getJwtToken() != null) {
+      builder.header(HEADER_AUTHORIZATION, BEARER_PREFIX + scenarioContext.getJwtToken());
+    }
+    return builder;
+  }
+
   @When("the client consults their wallet balance")
   public void whenClientConsultsWalletBalance() throws Exception {
     ResultActions resultActions =
-        mockMvc.perform(
-            get(WALLET_ENDPOINT)
-                .header(HEADER_AUTHORIZATION, BEARER_PREFIX + scenarioContext.getJwtToken())
-                .contentType(MediaType.APPLICATION_JSON));
+        mockMvc.perform(withAuth(get(WALLET_ENDPOINT)).contentType(MediaType.APPLICATION_JSON));
     scenarioContext.setLastResult(resultActions);
   }
 
@@ -71,8 +77,21 @@ public class WalletSteps extends AbstractScenario {
 
     ResultActions resultActions =
         mockMvc.perform(
-            post(WALLET_ENDPOINT + "/reload")
-                .header(HEADER_AUTHORIZATION, BEARER_PREFIX + scenarioContext.getJwtToken())
+            withAuth(post(WALLET_ENDPOINT + "/reload"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)));
+    scenarioContext.setLastResult(resultActions);
+  }
+
+  @When("the client debits {string} EUR from their wallet at store {string}")
+  public void whenClientDebitsWalletAtStore(String amountStr, String storeName) throws Exception {
+    BigDecimal amount = new BigDecimal(amountStr);
+    WalletDebitRequest request =
+        new WalletDebitRequest(amount, 1L, storeName, "ORD-BDD-001", "Paiement en boutique");
+
+    ResultActions resultActions =
+        mockMvc.perform(
+            withAuth(post(WALLET_ENDPOINT + "/debit"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)));
     scenarioContext.setLastResult(resultActions);
@@ -82,8 +101,7 @@ public class WalletSteps extends AbstractScenario {
   public void whenClientRequestsTransactionHistory() throws Exception {
     ResultActions resultActions =
         mockMvc.perform(
-            get(WALLET_ENDPOINT + "/transactions")
-                .header(HEADER_AUTHORIZATION, BEARER_PREFIX + scenarioContext.getJwtToken())
+            withAuth(get(WALLET_ENDPOINT + "/transactions"))
                 .contentType(MediaType.APPLICATION_JSON));
     scenarioContext.setLastResult(resultActions);
   }

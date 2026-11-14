@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -106,6 +107,37 @@ class WalletServiceTest {
 
     assertThat(response.balance()).isEqualByComparingTo("50.00");
     verify(walletTransactionRepository).save(any(WalletTransaction.class));
+  }
+
+  @Test
+  @DisplayName("SLE-15: Do not credit wallet when bank payment fails with exception")
+  void shouldNotCreditWalletWhenBankFails() {
+    when(paymentService.authorizePayment(any(PaymentAuthorizationRequest.class), eq(USER_ID)))
+        .thenThrow(new RuntimeException("Bank gateway communication error"));
+
+    WalletReloadRequest reloadRequest =
+        new WalletReloadRequest(new BigDecimal("30.00"), "tok_visa_4242");
+
+    assertThatThrownBy(() -> walletService.reload(USER_ID, reloadRequest))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("Bank gateway communication error");
+
+    verify(walletRepository, never()).save(any(Wallet.class));
+    verify(walletTransactionRepository, never()).save(any(WalletTransaction.class));
+  }
+
+  @Test
+  @DisplayName("SLE-17: Automatically provision wallet entity when it does not exist")
+  void shouldProvisionNewWalletEntity() {
+    when(walletRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
+    when(walletRepository.save(any(Wallet.class))).thenAnswer(i -> i.getArgument(0));
+
+    Wallet created = walletService.getOrCreateWalletEntity(USER_ID);
+
+    assertThat(created.getUserId()).isEqualTo(USER_ID);
+    assertThat(created.getBalance()).isEqualByComparingTo("0.00");
+    assertThat(created.getCurrency()).isEqualTo("EUR");
+    verify(walletRepository).save(any(Wallet.class));
   }
 
   @Test

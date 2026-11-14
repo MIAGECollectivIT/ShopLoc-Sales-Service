@@ -169,4 +169,89 @@ class SalesSecurityIntegrationTest {
   void shouldDenyGetOrderByReferenceWithoutToken() throws Exception {
     mockMvc.perform(get("/v1/sales/orders/CMD-1234")).andExpect(status().isUnauthorized());
   }
+
+  @Test
+  @DisplayName("GET /v1/sales/wallet without token -> should return 401 Unauthorized")
+  void shouldDenyGetWalletWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/wallet")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/wallet with MERCHANT role -> should return 403 Forbidden")
+  void shouldDenyGetWalletForMerchantRole() throws Exception {
+    String token =
+        generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(get("/v1/sales/wallet").header("Authorization", "Bearer " + token))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/wallet/reload without token -> should return 401 Unauthorized")
+  void shouldDenyReloadWalletWithoutToken() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/sales/wallet/reload")
+                .contentType("application/json")
+                .content("{\"amount\":20.00}"))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/wallet/reload with MERCHANT role -> should return 403 Forbidden")
+  void shouldDenyReloadWalletForMerchantRole() throws Exception {
+    String token =
+        generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            post("/v1/sales/wallet/reload")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"amount\":20.00}"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/wallet/transactions without token -> should return 401 Unauthorized")
+  void shouldDenyGetWalletTransactionsWithoutToken() throws Exception {
+    mockMvc.perform(get("/v1/sales/wallet/transactions")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName(
+      "GET /v1/sales/wallet/transactions with MERCHANT role -> should return 403 Forbidden")
+  void shouldDenyGetWalletTransactionsForMerchantRole() throws Exception {
+    String token =
+        generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(get("/v1/sales/wallet/transactions").header("Authorization", "Bearer " + token))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/wallet/debit without token -> should return 401 Unauthorized")
+  void shouldDenyDebitWalletWithoutToken() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/sales/wallet/debit")
+                .contentType("application/json")
+                .content("{\"amount\":10.00}"))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/wallet/debit with MERCHANT role -> should pass security interceptor")
+  void shouldAllowDebitWalletForMerchantRole() throws Exception {
+    String token =
+        generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+    // Security check passes; business logic returns 400 (insufficient balance) rather than 403
+    // Forbidden
+    mockMvc
+        .perform(
+            post("/v1/sales/wallet/debit")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"amount\":10.00}"))
+        .andExpect(status().isBadRequest());
+  }
 }

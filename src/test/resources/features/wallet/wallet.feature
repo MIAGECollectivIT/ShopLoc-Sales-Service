@@ -23,7 +23,29 @@ Feature: Digital Wallet Management (SLE-15, SLE-17, SLE-18)
     When the client reloads their wallet with amount "150.00" EUR
     Then the HTTP response status should be 400
 
+  Scenario: Debit wallet for in-store purchase with partner store name (SLE-18)
+    Given an authenticated user with role "CLIENT"
+    When the client reloads their wallet with amount "50.00" EUR
+    And the client debits "15.00" EUR from their wallet at store "Boulangerie Le Moulin Doré"
+    Then the HTTP response status should be 200
+    And the response JSON field "currency" should equal "EUR"
+
+  Scenario: Reject debit when wallet funds are insufficient (SLE-18)
+    Given an authenticated user with role "CLIENT"
+    When the client debits "9999.00" EUR from their wallet at store "Boulangerie Le Moulin Doré"
+    Then the HTTP response status should be 400
+
   Scenario: Consult wallet transaction history (SLE-18)
     Given an authenticated user with role "CLIENT"
     When the client requests their wallet transaction history
     Then the HTTP response status should be 200
+
+  Scenario: Forbid wallet access for MERCHANT role
+    Given an authenticated user with role "MERCHANT"
+    When the client consults their wallet balance
+    Then the HTTP response status should be 403
+
+  Scenario: Deny unauthenticated wallet access
+    Given an unauthenticated user
+    When the client consults their wallet balance
+    Then the HTTP response status should be 401
