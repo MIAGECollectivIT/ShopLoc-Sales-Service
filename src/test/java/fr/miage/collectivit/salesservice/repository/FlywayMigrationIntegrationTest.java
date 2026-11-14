@@ -13,7 +13,7 @@ import org.springframework.boot.jdbc.DataSourceBuilder;
 class FlywayMigrationIntegrationTest {
 
   @Test
-  @DisplayName("Should execute V1, V2, V3, V4 and V5 migrations successfully")
+  @DisplayName("Should execute V1, V2, V3, V4, V5 and V6 migrations successfully")
   void shouldExecuteFlywayMigrationSuccessfully() {
     DataSource dataSource =
         DataSourceBuilder.create()
@@ -32,7 +32,7 @@ class FlywayMigrationIntegrationTest {
 
     MigrateResult result = flyway.migrate();
 
-    assertThat(result.migrationsExecuted).isGreaterThanOrEqualTo(5);
-    assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("5");
+    assertThat(result.migrationsExecuted).isGreaterThanOrEqualTo(6);
+    assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("6");
   }
 }

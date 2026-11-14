@@ -1,0 +1,236 @@
+package fr.miage.collectivit.salesservice.service;
+
+import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
+import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
+import fr.miage.collectivit.salesservice.dto.WalletDebitRequest;
+import fr.miage.collectivit.salesservice.dto.WalletReloadRequest;
+import fr.miage.collectivit.salesservice.dto.WalletResponse;
+import fr.miage.collectivit.salesservice.dto.WalletTransactionResponse;
+import fr.miage.collectivit.salesservice.exception.InsufficientWalletBalanceException;
+import fr.miage.collectivit.salesservice.model.Wallet;
+import fr.miage.collectivit.salesservice.model.WalletTransaction;
+import fr.miage.collectivit.salesservice.model.WalletTransactionType;
+import fr.miage.collectivit.salesservice.repository.WalletRepository;
+import fr.miage.collectivit.salesservice.repository.WalletTransactionRepository;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * Service managing citizen digital wallet balance, online bank reloads (SLE-15), real-time balance
+ * queries (SLE-17), and transaction history auditing (SLE-18).
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@SuppressWarnings({"PMD.LawOfDemeter", "PMD.AvoidDuplicateLiterals"})
+public class WalletService {
+
+  public static final BigDecimal MIN_RELOAD_AMOUNT = new BigDecimal("5.00");
+  public static final BigDecimal MAX_RELOAD_AMOUNT = new BigDecimal("100.00");
+  private static final String DEFAULT_CURRENCY = "EUR";
+  private static final String DEFAULT_PAYMENT_TOKEN = "tok_visa_4242";
+
+  private final WalletRepository walletRepository;
+  private final WalletTransactionRepository walletTransactionRepository;
+  private final PaymentService paymentService;
+
+  /** Retrieves or provisions the wallet for the given citizen user (SLE-17). */
+  @Transactional
+  public Wallet getOrCreateWalletEntity(String userId) {
+    String trimmedUserId = userId.trim();
+    return walletRepository
+        .findByUserId(trimmedUserId)
+        .orElseGet(
+            () ->
+                walletRepository.save(
+                    Wallet.builder()
+                        .userId(trimmedUserId)
+                        .balance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
+                        .currency(DEFAULT_CURRENCY)
+                        .createdAt(Instant.now())
+                        .updatedAt(Instant.now())
+                        .build()));
+  }
+
+  /** Retrieves the current real-time balance of the citizen's wallet (SLE-17). */
+  @Transactional(readOnly = true)
+  public WalletResponse getWallet(String userId) {
+    return walletRepository
+        .findByUserId(userId.trim())
+        .map(WalletResponse::fromEntity)
+        .orElseGet(
+            () ->
+                new WalletResponse(
+                    null,
+                    userId.trim(),
+                    BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                    DEFAULT_CURRENCY,
+                    Instant.now(),
+                    Instant.now()));
+  }
+
+  /**
+   * Reloads the citizen wallet with a custom amount between 5.00 € and 100.00 € through the secure
+   * bank payment gateway (SLE-15).
+   */
+  @Transactional
+  public WalletResponse reload(String userId, WalletReloadRequest request) {
+    BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_UP);
+    validateReloadAmount(amount);
+
+    String paymentToken =
+        (request.paymentToken() != null && !request.paymentToken().isBlank())
+            ? request.paymentToken().trim()
+            : DEFAULT_PAYMENT_TOKEN;
+
+    String paymentReference = "WRL-" + System.currentTimeMillis();
+    PaymentAuthorizationRequest payRequest =
+        new PaymentAuthorizationRequest(amount, DEFAULT_CURRENCY, paymentReference, paymentToken);
+
+    // Call external bank gateway through PaymentService (RG001 verification)
+    PaymentAuthorizationResponse payResponse =
+        paymentService.authorizePayment(payRequest, userId.trim());
+
+    // Credit the wallet
+    Wallet wallet = getOrCreateWalletEntity(userId);
+    BigDecimal newBalance = wallet.getBalance().add(amount).setScale(2, RoundingMode.HALF_UP);
+    wallet.setBalance(newBalance);
+    Wallet savedWallet = walletRepository.save(wallet);
+
+    // Record the audit transaction (SLE-18)
+    String txRef =
+        "WTX-"
+            + UUID.randomUUID()
+                .toString()
+                .replace("-", "")
+                .substring(0, 12)
+                .toUpperCase(Locale.ROOT);
+    WalletTransaction tx =
+        WalletTransaction.builder()
+            .wallet(savedWallet)
+            .userId(userId.trim())
+            .transactionReference(txRef)
+            .amount(amount)
+            .type(WalletTransactionType.TOPUP)
+            .status("SUCCESS")
+            .paymentReference(payResponse.reference())
+            .description("Rechargement porte-monnaie par carte bancaire")
+            .balanceAfter(newBalance)
+            .createdAt(Instant.now())
+            .build();
+    walletTransactionRepository.save(tx);
+
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Wallet successfully reloaded: userId={}, amount={} EUR, newBalance={} EUR, txRef={}",
+          userId,
+          amount,
+          newBalance,
+          txRef);
+    }
+
+    return WalletResponse.fromEntity(savedWallet);
+  }
+
+  /** Debits the citizen wallet for in-store or click & collect purchases (SLE-18). */
+  @Transactional
+  public WalletResponse debit(String userId, WalletDebitRequest request) {
+    BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_UP);
+    if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+      throw new IllegalArgumentException("Le montant du débit doit être supérieur à zéro.");
+    }
+
+    Wallet wallet = getOrCreateWalletEntity(userId);
+    if (wallet.getBalance().compareTo(amount) < 0) {
+      throw new InsufficientWalletBalanceException(
+          "Solde insuffisant sur votre porte-monnaie (solde disponible : "
+              + wallet.getBalance()
+              + " €)");
+    }
+
+    BigDecimal newBalance = wallet.getBalance().subtract(amount).setScale(2, RoundingMode.HALF_UP);
+    wallet.setBalance(newBalance);
+    Wallet savedWallet = walletRepository.save(wallet);
+
+    String txRef =
+        "WTX-"
+            + UUID.randomUUID()
+                .toString()
+                .replace("-", "")
+                .substring(0, 12)
+                .toUpperCase(Locale.ROOT);
+    String description =
+        (request.description() != null && !request.description().isBlank())
+            ? request.description().trim()
+            : ("Achat chez " + (request.storeName() != null ? request.storeName() : "commerçant"));
+
+    WalletTransaction tx =
+        WalletTransaction.builder()
+            .wallet(savedWallet)
+            .userId(userId.trim())
+            .transactionReference(txRef)
+            .amount(amount)
+            .type(WalletTransactionType.DEBIT)
+            .status("SUCCESS")
+            .storeId(request.storeId())
+            .storeName(request.storeName())
+            .orderReference(request.orderReference())
+            .description(description)
+            .balanceAfter(newBalance)
+            .createdAt(Instant.now())
+            .build();
+    walletTransactionRepository.save(tx);
+
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Wallet successfully debited: userId={}, amount={} EUR, store='{}', newBalance={} EUR, txRef={}",
+          userId,
+          amount,
+          request.storeName(),
+          newBalance,
+          txRef);
+    }
+
+    return WalletResponse.fromEntity(savedWallet);
+  }
+
+  /** Returns the ordered transaction history (newest to oldest) for the citizen (SLE-18). */
+  @Transactional(readOnly = true)
+  public List<WalletTransactionResponse> getTransactions(String userId) {
+    return walletTransactionRepository.findByUserIdOrderByCreatedAtDesc(userId.trim()).stream()
+        .map(WalletTransactionResponse::fromEntity)
+        .toList();
+  }
+
+  /** Returns paged transaction history for the citizen (SLE-18). */
+  @Transactional(readOnly = true)
+  public Page<WalletTransactionResponse> getTransactions(String userId, Pageable pageable) {
+    return walletTransactionRepository
+        .findByUserIdOrderByCreatedAtDesc(userId.trim(), pageable)
+        .map(WalletTransactionResponse::fromEntity);
+  }
+
+  private void validateReloadAmount(BigDecimal amount) {
+    if (amount == null) {
+      throw new IllegalArgumentException("Le montant de rechargement est obligatoire.");
+    }
+    if (amount.compareTo(MIN_RELOAD_AMOUNT) < 0) {
+      throw new IllegalArgumentException(
+          "Le montant minimum de rechargement est de " + MIN_RELOAD_AMOUNT + " €.");
+    }
+    if (amount.compareTo(MAX_RELOAD_AMOUNT) > 0) {
+      throw new IllegalArgumentException(
+          "Le montant maximum de rechargement est de " + MAX_RELOAD_AMOUNT + " €.");
+    }
+  }
+}
