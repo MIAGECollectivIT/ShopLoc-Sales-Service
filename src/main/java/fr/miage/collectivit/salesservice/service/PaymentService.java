@@ -3,12 +3,14 @@ package fr.miage.collectivit.salesservice.service;
 import fr.miage.collectivit.salesservice.client.BankGatewayClient;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
+import fr.miage.collectivit.salesservice.dto.UserPaymentTransactionResponse;
 import fr.miage.collectivit.salesservice.exception.PaymentGatewayException;
 import fr.miage.collectivit.salesservice.exception.PaymentNotFoundException;
 import fr.miage.collectivit.salesservice.model.PaymentTransaction;
 import fr.miage.collectivit.salesservice.repository.PaymentTransactionRepository;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -76,6 +78,28 @@ public class PaymentService {
         .findFirstByReferenceOrderByCreatedAtDesc(reference)
         .map(PaymentAuthorizationResponse::fromEntity)
         .orElseThrow(() -> new PaymentNotFoundException(reference));
+  }
+
+  @Transactional(readOnly = true)
+  public List<UserPaymentTransactionResponse> getUserTransactions(
+      String userId, Instant from, Instant to) {
+    if (!hasText(userId)) {
+      throw new IllegalArgumentException("User ID must not be blank");
+    }
+    if (from == null || to == null) {
+      throw new IllegalArgumentException("Both 'from' and 'to' date parameters are required");
+    }
+    if (from.isAfter(to)) {
+      throw new IllegalArgumentException(
+          "The 'from' timestamp must be before or equal to 'to' timestamp");
+    }
+
+    return paymentTransactionRepository
+        .findByUserIdAndStatusAndCreatedAtBetweenOrderByCreatedAtDesc(
+            userId.trim(), PaymentTransaction.RG001_APPROVED_STATUS, from, to)
+        .stream()
+        .map(UserPaymentTransactionResponse::fromEntity)
+        .toList();
   }
 
   @Transactional(readOnly = true)
