@@ -55,10 +55,10 @@ Feature: Digital Wallet Management (SLE-15, SLE-17, SLE-18)
     And the client reloads their wallet with amount "10.00" EUR
     Then the HTTP response status should be 400
 
-  Scenario: Forbid wallet access for MERCHANT role
+  Scenario: Allow wallet access for MERCHANT role
     Given an authenticated user with role "MERCHANT"
     When the client consults their wallet balance
-    Then the HTTP response status should be 403
+    Then the HTTP response status should be 200
 
   Scenario: Deny unauthenticated wallet access
     Given an unauthenticated user

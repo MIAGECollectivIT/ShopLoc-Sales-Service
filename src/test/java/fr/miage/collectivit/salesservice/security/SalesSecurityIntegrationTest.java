@@ -177,10 +177,19 @@ class SalesSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName("GET /v1/sales/wallet with MERCHANT role -> should return 403 Forbidden")
-  void shouldDenyGetWalletForMerchantRole() throws Exception {
+  @DisplayName("GET /v1/sales/wallet with MERCHANT role -> should return 200 OK")
+  void shouldAllowGetWalletForMerchantRole() throws Exception {
     String token =
         generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(get("/v1/sales/wallet").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/wallet with GUEST role -> should return 403 Forbidden")
+  void shouldDenyGetWalletForGuestRole() throws Exception {
+    String token = generateTestToken("GUEST", "guest@shoploc.fr", UUID.randomUUID().toString());
     mockMvc
         .perform(get("/v1/sales/wallet").header("Authorization", "Bearer " + token))
         .andExpect(status().isForbidden());
@@ -198,10 +207,9 @@ class SalesSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName("POST /v1/sales/wallet/reload with MERCHANT role -> should return 403 Forbidden")
-  void shouldDenyReloadWalletForMerchantRole() throws Exception {
-    String token =
-        generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+  @DisplayName("POST /v1/sales/wallet/reload with GUEST role -> should return 403 Forbidden")
+  void shouldDenyReloadWalletForGuestRole() throws Exception {
+    String token = generateTestToken("GUEST", "guest@shoploc.fr", UUID.randomUUID().toString());
     mockMvc
         .perform(
             post("/v1/sales/wallet/reload")
@@ -218,11 +226,19 @@ class SalesSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName(
-      "GET /v1/sales/wallet/transactions with MERCHANT role -> should return 403 Forbidden")
-  void shouldDenyGetWalletTransactionsForMerchantRole() throws Exception {
+  @DisplayName("GET /v1/sales/wallet/transactions with MERCHANT role -> should return 200 OK")
+  void shouldAllowGetWalletTransactionsForMerchantRole() throws Exception {
     String token =
         generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(get("/v1/sales/wallet/transactions").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/wallet/transactions with GUEST role -> should return 403 Forbidden")
+  void shouldDenyGetWalletTransactionsForGuestRole() throws Exception {
+    String token = generateTestToken("GUEST", "guest@shoploc.fr", UUID.randomUUID().toString());
     mockMvc
         .perform(get("/v1/sales/wallet/transactions").header("Authorization", "Bearer " + token))
         .andExpect(status().isForbidden());
@@ -240,10 +256,9 @@ class SalesSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName("POST /v1/sales/wallet/debit with MERCHANT role -> should return 403 Forbidden")
-  void shouldDenyDebitWalletForMerchantRole() throws Exception {
-    String token =
-        generateTestToken("MERCHANT", "merchant@shoploc.fr", UUID.randomUUID().toString());
+  @DisplayName("POST /v1/sales/wallet/debit with GUEST role -> should return 403 Forbidden")
+  void shouldDenyDebitWalletForGuestRole() throws Exception {
+    String token = generateTestToken("GUEST", "guest@shoploc.fr", UUID.randomUUID().toString());
     mockMvc
         .perform(
             post("/v1/sales/wallet/debit")

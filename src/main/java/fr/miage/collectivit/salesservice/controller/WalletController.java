@@ -42,7 +42,7 @@ public class WalletController {
   private final WalletService walletService;
 
   @GetMapping
-  @RequiresRole({UserRole.CLIENT, UserRole.ADMIN})
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Consult digital wallet balance in real time (SLE-17)",
       description =
@@ -50,7 +50,7 @@ public class WalletController {
   @ApiResponses({
     @ApiResponse(responseCode = "200", description = "Wallet retrieved successfully"),
     @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
-    @ApiResponse(responseCode = "403", description = "Forbidden - Requires CLIENT role")
+    @ApiResponse(responseCode = "403", description = "Forbidden")
   })
   public ResponseEntity<WalletResponse> getWallet(
       @RequestParam(value = "userId", required = false) String requestedUserId,
@@ -60,7 +60,7 @@ public class WalletController {
   }
 
   @PostMapping("/reload")
-  @RequiresRole({UserRole.CLIENT, UserRole.ADMIN})
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Reload wallet online by credit card (SLE-15)",
       description =
@@ -71,7 +71,7 @@ public class WalletController {
         responseCode = "400",
         description = "Invalid reload amount (outside 5€ - 100€ range or weekly limit exceeded)"),
     @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
-    @ApiResponse(responseCode = "403", description = "Forbidden - Requires CLIENT role"),
+    @ApiResponse(responseCode = "403", description = "Forbidden"),
     @ApiResponse(responseCode = "502", description = "Bank payment gateway rejected authorization")
   })
   public ResponseEntity<WalletResponse> reloadWallet(
@@ -89,7 +89,7 @@ public class WalletController {
   }
 
   @GetMapping("/transactions")
-  @RequiresRole({UserRole.CLIENT, UserRole.ADMIN})
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Consult transaction history in real time (SLE-18)",
       description =
@@ -97,7 +97,7 @@ public class WalletController {
   @ApiResponses({
     @ApiResponse(responseCode = "200", description = "Transaction history retrieved successfully"),
     @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
-    @ApiResponse(responseCode = "403", description = "Forbidden - Requires CLIENT role")
+    @ApiResponse(responseCode = "403", description = "Forbidden")
   })
   public ResponseEntity<List<WalletTransactionResponse>> getTransactions(
       @RequestParam(value = "userId", required = false) String requestedUserId,
@@ -107,7 +107,7 @@ public class WalletController {
   }
 
   @PostMapping("/debit")
-  @RequiresRole({UserRole.CLIENT, UserRole.ADMIN})
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(
       summary = "Debit wallet for a purchase (SLE-18)",
       description =
