@@ -10,6 +10,8 @@ import fr.miage.collectivit.salesservice.client.LoyaltyRateClient;
 import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleRequest;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleResponse;
+import fr.miage.collectivit.salesservice.dto.event.PhysicalPaymentCompletedEvent;
+import fr.miage.collectivit.salesservice.event.PhysicalPaymentEventPublisher;
 import fr.miage.collectivit.salesservice.exception.PhysicalSaleNotFoundException;
 import fr.miage.collectivit.salesservice.model.PhysicalSaleTransaction;
 import fr.miage.collectivit.salesservice.repository.PhysicalSaleTransactionRepository;
@@ -29,12 +31,14 @@ class PhysicalSaleServiceTest {
 
   @Mock private PhysicalSaleTransactionRepository repository;
   @Mock private LoyaltyRateClient loyaltyRateClient;
+  @Mock private PhysicalPaymentEventPublisher physicalPaymentEventPublisher;
 
   private PhysicalSaleService physicalSaleService;
 
   @BeforeEach
   void setUp() {
-    physicalSaleService = new PhysicalSaleService(repository, loyaltyRateClient);
+    physicalSaleService =
+        new PhysicalSaleService(repository, loyaltyRateClient, null, physicalPaymentEventPublisher);
   }
 
   @Test
@@ -70,6 +74,17 @@ class PhysicalSaleServiceTest {
     PhysicalSaleTransaction saved = captor.getValue();
     assertThat(saved.getMerchantId()).isEqualTo("merchant-user-456");
     assertThat(saved.getPointsRateApplied()).isEqualTo("2.00 EUR = 1.0 PTS");
+
+    ArgumentCaptor<PhysicalPaymentCompletedEvent> eventCaptor =
+        ArgumentCaptor.forClass(PhysicalPaymentCompletedEvent.class);
+    verify(physicalPaymentEventPublisher).publishPhysicalPaymentCompleted(eventCaptor.capture());
+    PhysicalPaymentCompletedEvent publishedEvent = eventCaptor.getValue();
+    assertThat(publishedEvent.transactionReference()).isEqualTo(response.transactionReference());
+    assertThat(publishedEvent.storeId()).isEqualTo(storeId);
+    assertThat(publishedEvent.clientCode()).isEqualTo("K7P9XQ2");
+    assertThat(publishedEvent.customerId()).isEqualTo("cust-123");
+    assertThat(publishedEvent.amount()).isEqualByComparingTo(new BigDecimal("25.50"));
+    assertThat(publishedEvent.currency()).isEqualTo("EUR");
   }
 
   @Test

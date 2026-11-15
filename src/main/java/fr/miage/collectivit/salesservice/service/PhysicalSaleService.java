@@ -4,6 +4,8 @@ import fr.miage.collectivit.salesservice.client.LoyaltyRateClient;
 import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleRequest;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleResponse;
+import fr.miage.collectivit.salesservice.dto.event.PhysicalPaymentCompletedEvent;
+import fr.miage.collectivit.salesservice.event.PhysicalPaymentEventPublisher;
 import fr.miage.collectivit.salesservice.event.TransactionApprovedKafkaEvent;
 import fr.miage.collectivit.salesservice.event.TransactionEventPublisher;
 import fr.miage.collectivit.salesservice.exception.PhysicalSaleNotFoundException;
@@ -31,21 +33,31 @@ public class PhysicalSaleService {
   private final PhysicalSaleTransactionRepository physicalSaleTransactionRepository;
   private final LoyaltyRateClient loyaltyRateClient;
   private final TransactionEventPublisher transactionEventPublisher;
+  private final PhysicalPaymentEventPublisher physicalPaymentEventPublisher;
 
   public PhysicalSaleService(
       PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
       LoyaltyRateClient loyaltyRateClient) {
-    this(physicalSaleTransactionRepository, loyaltyRateClient, null);
+    this(physicalSaleTransactionRepository, loyaltyRateClient, null, null);
+  }
+
+  public PhysicalSaleService(
+      PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
+      LoyaltyRateClient loyaltyRateClient,
+      TransactionEventPublisher transactionEventPublisher) {
+    this(physicalSaleTransactionRepository, loyaltyRateClient, transactionEventPublisher, null);
   }
 
   @Autowired
   public PhysicalSaleService(
       PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
       LoyaltyRateClient loyaltyRateClient,
-      @Autowired(required = false) TransactionEventPublisher transactionEventPublisher) {
+      @Autowired(required = false) TransactionEventPublisher transactionEventPublisher,
+      @Autowired(required = false) PhysicalPaymentEventPublisher physicalPaymentEventPublisher) {
     this.physicalSaleTransactionRepository = physicalSaleTransactionRepository;
     this.loyaltyRateClient = loyaltyRateClient;
     this.transactionEventPublisher = transactionEventPublisher;
+    this.physicalPaymentEventPublisher = physicalPaymentEventPublisher;
   }
 
   @Transactional
@@ -88,6 +100,18 @@ public class PhysicalSaleService {
             .build();
 
     PhysicalSaleTransaction saved = physicalSaleTransactionRepository.save(transaction);
+
+    if (physicalPaymentEventPublisher != null) {
+      physicalPaymentEventPublisher.publishPhysicalPaymentCompleted(
+          new PhysicalPaymentCompletedEvent(
+              saved.getTransactionReference(),
+              saved.getStoreId(),
+              saved.getClientCode(),
+              saved.getCustomerId(),
+              saved.getAmount(),
+              saved.getCurrency(),
+              saved.getCreatedAt()));
+    }
 
     if (transactionEventPublisher != null && hasText(saved.getCustomerId())) {
       Double amountValue = saved.getAmount() != null ? saved.getAmount().doubleValue() : null;
