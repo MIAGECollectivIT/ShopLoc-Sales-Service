@@ -116,3 +116,4 @@ class PhysicalPaymentEventPublisherTest {
         .doesNotThrowAnyException();
   }
 }
+
