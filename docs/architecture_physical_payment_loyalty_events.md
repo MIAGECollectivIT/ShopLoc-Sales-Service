@@ -124,6 +124,10 @@ Because `Sales-Service` and `Loyalty-Service` are distinct autonomous microservi
   ```
 * This prevents any `ClassNotFoundException` while maintaining strict compile-time boundaries.
 
+### 4.4. Dead Letter Queue (DLQ / DLT) & Store Name Resolution
+* **Dead Letter Topic**: Corrupted messages or unrecoverable processing failures trigger `DeadLetterPublishingRecoverer` (after 2 retry attempts with 1-second backoff), forwarding the failed payload to `shoploc.physical-payments.DLT` without stalling topic consumption.
+* **Commercial Store Resolution**: In `Loyalty-Service`, `PointsAccountService` queries `StoreVerificationPort.findStoreName(storeId)` via `StoreServiceHttpAdapter` (`GET /v1/stores/{storeId}`) to record the store's human-readable name (e.g., "Burger King Lille") directly in the customer's ledger transaction history.
+
 ---
 
 ## 5. REST API Specifications
