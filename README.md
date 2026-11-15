@@ -13,12 +13,14 @@ Sales microservice for the ShopLoc project (MIAGE Collectiv'IT).
   - [4.1 Interactive Documentation](#41-interactive-documentation)
   - [4.2 Authentication in application.yaml](#42-authentication-in-applicationyaml)
   - [4.3 OpenAPI Vendor Extensions](#43-openapi-vendor-extensions)
-- [5. Project structure](#5-project-structure)
-- [6. Workflow](#6-workflow)
-  - [6.1 Semantic versioning](#61-semantic-versioning)
-  - [6.2 Quality pipeline](#62-quality-pipeline)
-    - [6.2.1 (Husky) Pre-commit](#621-husky-pre-commit)
-    - [6.2.2 GitHub Actions](#622-github-actions)
+  - [4.4 In-Store Physical Checkout & Loyalty Events (SLE-36)](#44-in-store-physical-checkout--loyalty-events-sle-36)
+- [5. Architecture Documentation & Guides](#5-architecture-documentation--guides)
+- [6. Project structure](#6-project-structure)
+- [7. Workflow](#7-workflow)
+  - [7.1 Semantic versioning](#71-semantic-versioning)
+  - [7.2 Quality pipeline](#72-quality-pipeline)
+    - [7.2.1 (Husky) Pre-commit](#721-husky-pre-commit)
+    - [7.2.2 GitHub Actions](#722-github-actions)
 
 ## 0. Prerequisites
 - **Java 21** (JDK 21 LTS minimum, enforced by `maven-enforcer-plugin`)
@@ -35,6 +37,7 @@ Sales microservice for the ShopLoc project (MIAGE Collectiv'IT).
 - **Springdoc OpenAPI (Swagger UI)**: OpenAPI 3 interactive documentation (`/swagger-ui.html`) with JWT authentication support.
 - **JJWT (Java JWT)**: Asymmetric RSA (RS256) and symmetric HMAC token verification and revocation check.
 - **Project Lombok**: Reduces boilerplate code (getters, setters, builders, constructors) via annotation processing.
+- **Spring for Apache Kafka (Spring Kafka)**: Event-driven architecture producer (`KafkaProducerConfig`, `PhysicalPaymentEventPublisher`) emitting events to `shoploc.physical-payments` on physical checkout (SLE-36 / SLE-172) and automated topic provisioning (`KafkaTopicConfig`).
 - **Spring Boot Starter Test & Testing Suite**:
   - JUnit Jupiter (JUnit 5) & Cucumber BDD (Gherkin feature scenarios)
   - Mockito & Mockito JUnit Jupiter
@@ -145,8 +148,27 @@ application:
       x-service-name: "sales-service"
 ```
 
-## 5. Project structure
+### 4.4 In-Store Physical Checkout & Loyalty Events (SLE-36)
+`Sales-Service` enables merchant cashiers to register physical store checkouts and asynchronously publish loyalty point reward events:
+- **Endpoint**: `POST /v1/sales/physical`
+- **Role Requirement**: `@RequiresRole({UserRole.MERCHANT, UserRole.ADMIN})`
+- **Workflow**:
+  1. Synchronously records the sale transaction in `physical_sales` with unique reference `PHYS-YYYYMMDD-XXXXXXXX`.
+  2. Publishes `PhysicalPaymentCompletedEvent` to Apache Kafka topic `shoploc.physical-payments` keyed by `clientCode` / `customerId`.
+  3. `Loyalty-Service` consumes the event asynchronously to calculate and credit loyalty points without delaying checkout.
+- **Lookup Endpoint**: `GET /v1/sales/physical/{reference}` (Role: `CLIENT` for own sales, `MERCHANT`, `ADMIN`).
+
+## 5. Architecture Documentation & Guides
+Technical architectural specifications and sequence diagrams:
+- [**In-Store Physical Checkout & Loyalty Points Event-Driven Architecture (SLE-36)**](docs/architecture_physical_payment_loyalty_events.md)
+- [**Digital Wallet Architecture (SLE-15, SLE-17, SLE-18)**](docs/architecture_porte_monnaie_wallet.md)
+
+## 6. Project structure
 ```
+├── docs/                        # Architecture guides and specifications
+│   ├── README.md
+│   ├── architecture_physical_payment_loyalty_events.md
+│   └── architecture_porte_monnaie_wallet.md
 ├── .dockerignore                # Docker build context exclusions
 ├── .github/                     # GitHub Actions workflows (CI & CD)
 │   └── workflows/
@@ -162,40 +184,55 @@ application:
 │   │   │       ├── client/
 │   │   │       │   └── BankGatewayClient.java            # External bank gateway HTTP client with retry
 │   │   │       ├── config/
+│   │   │       │   ├── KafkaProducerConfig.java          # Kafka ProducerFactory & KafkaTemplate setup (SLE-172)
+│   │   │       │   ├── KafkaTopicConfig.java             # KafkaAdmin topic initialization (SLE-171)
 │   │   │       │   ├── OpenApiConfig.java                # Swagger & OpenAPI authentication setup
 │   │   │       │   └── WebConfig.java                    # CORS & JWT interceptor registration
 │   │   │       ├── controller/
 │   │   │       │   ├── PaymentController.java            # Payment authorization & lookup endpoints (RG001)
+│   │   │       │   ├── PhysicalSaleController.java       # In-store physical checkout endpoint (SLE-36)
 │   │   │       │   └── SalesStatusController.java        # Service health/status endpoint
 │   │   │       ├── dto/
+│   │   │       │   ├── event/
+│   │   │       │   │   └── PhysicalPaymentCompletedEvent.java # Kafka event DTO
 │   │   │       │   ├── PaymentAuthorizationRequest.java  # Request DTO with Bean Validation
-│   │   │       │   └── PaymentAuthorizationResponse.java # Response DTO compliant with RG001
+│   │   │       │   ├── PaymentAuthorizationResponse.java # Response DTO compliant with RG001
+│   │   │       │   ├── PhysicalSaleRequest.java          # In-store checkout request DTO
+│   │   │       │   └── PhysicalSaleResponse.java         # In-store checkout response DTO
+│   │   │       ├── event/
+│   │   │       │   ├── PhysicalPaymentEventPublisher.java # Async Kafka publisher for physical checkout
+│   │   │       │   └── TransactionEventPublisher.java    # Async Kafka publisher for approved transactions
 │   │   │       ├── exception/
 │   │   │       │   ├── GlobalExceptionHandler.java       # Centralized REST exception handling
 │   │   │       │   ├── PaymentGatewayException.java      # 502 Bad Gateway exception
 │   │   │       │   └── PaymentNotFoundException.java     # 404 Not Found exception
 │   │   │       ├── model/
-│   │   │       │   └── PaymentTransaction.java           # JPA entity for payment_transactions
+│   │   │       │   ├── PaymentTransaction.java           # JPA entity for payment_transactions
+│   │   │       │   └── PhysicalSale.java                 # JPA entity for physical_sales
 │   │   │       ├── repository/
-│   │   │       │   └── PaymentTransactionRepository.java # Spring Data JPA repository
+│   │   │       │   ├── PaymentTransactionRepository.java # Spring Data JPA repository
+│   │   │       │   └── PhysicalSaleRepository.java       # Spring Data JPA repository
 │   │   │       ├── security/
 │   │   │       │   ├── JwtAuthInterceptor.java           # HTTP interceptor for Bearer JWT validation
 │   │   │       │   ├── JwtKeyProvider.java               # RSA/HMAC key loader & dynamic fetcher
 │   │   │       │   ├── JwtValidatorService.java          # Token signature & revocation validator
 │   │   │       │   └── TokenRevocationService.java       # Revoked JTI cache synchronized with users-service
 │   │   │       ├── service/
-│   │   │       │   └── PaymentService.java               # Business logic for RG001 payment authorization
+│   │   │       │   ├── PaymentService.java               # Business logic for RG001 payment authorization
+│   │   │       │   └── PhysicalSaleService.java          # Business logic for in-store physical checkout
 │   │   │       └── SalesServiceApplication.java          # Application entrypoint
 │   │   └── resources/
 │   │       ├── db/migration/
 │   │       │   └── V1__create_payment_transactions.sql   # Flyway schema migration
-│   │       └── application.yaml                          # Application, JPA, Flyway, OpenAPI & security config
+│   │       └── application.yaml                          # Application, JPA, Flyway, OpenAPI, Kafka & security config
 │   └── test/
 │       ├── java/                # Unit, integration & Cucumber BDD tests
 │       │   └── fr/miage/collectivit/salesservice/
 │       │       ├── bdd/                                  # Cucumber BDD test suite & step definitions
 │       │       ├── controller/
 │       │       │   └── SalesStatusControllerTest.java
+│       │       ├── event/
+│       │       │   └── PhysicalPaymentEventPublisherTest.java # Kafka event publisher tests
 │       │       ├── repository/
 │       │       │   └── FlywayMigrationIntegrationTest.java
 │       │       ├── security/
@@ -214,14 +251,14 @@ application:
 └── README.md
 ```
 
-## 6. Workflow
-### 6.1 Semantic versioning
+## 7. Workflow
+### 7.1 Semantic versioning
 Automated versioning runs on every deployment and bumps the project version according to Conventional Commits:
 - `fix:` → Patch Increment (e.g. 1.0.1)
 - `feat:` → Minor Increment (e.g. 1.1.0)
 - `BREAKING CHANGE:` (or `feat!:`) → Major Increment (e.g. 2.0.0)
 
-### 6.2 Quality pipeline 
+### 7.2 Quality pipeline 
 #### 6.2.1 (Husky) Pre-commit
 A pre-commit hook runs automatically before every commit to format code with Spotless, run PMD static analysis, and ensure tests compile:
 ```bash
