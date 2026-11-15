@@ -12,6 +12,7 @@ import fr.miage.collectivit.salesservice.model.OrderItem;
 import fr.miage.collectivit.salesservice.model.OrderStatus;
 import fr.miage.collectivit.salesservice.repository.OrderRepository;
 import fr.miage.collectivit.salesservice.security.UserRole;
+import fr.miage.collectivit.salesservice.service.receipt.OrderPaidEvent;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -27,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,7 +39,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@SuppressWarnings({"PMD.LawOfDemeter", "PMD.CouplingBetweenObjects"})
+@SuppressWarnings({
+  "PMD.LawOfDemeter",
+  "PMD.CouplingBetweenObjects",
+  "PMD.ExcessiveImports",
+  "PMD.GodClass"
+})
 public class OrderProcessingService {
 
   public static final Duration DEFAULT_LOCK_DURATION = Duration.ofMinutes(30);
@@ -45,6 +52,7 @@ public class OrderProcessingService {
 
   private final OrderRepository orderRepository;
   private final StoreClient storeClient;
+  private final ApplicationEventPublisher applicationEventPublisher;
 
   @Transactional
   public OrderResponse createOrder(
@@ -181,11 +189,25 @@ public class OrderProcessingService {
       throw new IllegalArgumentException("Invalid order status: " + newStatus, ex);
     }
 
+    if (order.getStatus() == status) {
+      if (log.isInfoEnabled()) {
+        log.info(
+            "Order {} is already in status {}, skipping status update and event publication",
+            identifier,
+            status);
+      }
+      return mapToResponse(order);
+    }
+
     releaseStockIfCancelledOrExpired(order, status);
 
     order.setStatus(status);
     order.setUpdatedAt(Instant.now());
     Order updated = orderRepository.save(order);
+
+    if (status == OrderStatus.PAID) {
+      applicationEventPublisher.publishEvent(new OrderPaidEvent(updated.getOrderReference()));
+    }
 
     if (log.isInfoEnabled()) {
       log.info("Order status updated: identifier={}, newStatus={}", identifier, status);
@@ -249,7 +271,9 @@ public class OrderProcessingService {
         order.getExpiresAt(),
         order.getCreatedAt(),
         storeSummaries,
-        itemResponses);
+        itemResponses,
+        order.getReceiptSentAt(),
+        order.getUpdatedAt());
   }
 
   @SuppressWarnings("PMD.AvoidCatchingGenericException")

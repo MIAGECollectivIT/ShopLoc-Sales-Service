@@ -58,9 +58,8 @@ public class GlobalExceptionHandler {
     return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
   }
 
-  @ExceptionHandler(InsufficientStockException.class)
-  public ResponseEntity<Map<String, Object>> handleInsufficientStock(
-      InsufficientStockException ex) {
+  @ExceptionHandler({InsufficientStockException.class, InsufficientWalletBalanceException.class})
+  public ResponseEntity<Map<String, Object>> handleInsufficientFundsOrStock(RuntimeException ex) {
     return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
   }
 

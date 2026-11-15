@@ -29,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OrderProcessingService Unit Tests (SLE-186)")
@@ -36,12 +37,14 @@ class OrderProcessingServiceTest {
 
   @Mock private OrderRepository orderRepository;
   @Mock private StoreClient storeClient;
+  @Mock private ApplicationEventPublisher applicationEventPublisher;
 
   private OrderProcessingService orderProcessingService;
 
   @BeforeEach
   void setUp() {
-    orderProcessingService = new OrderProcessingService(orderRepository, storeClient);
+    orderProcessingService =
+        new OrderProcessingService(orderRepository, storeClient, applicationEventPublisher);
   }
 
   @Test

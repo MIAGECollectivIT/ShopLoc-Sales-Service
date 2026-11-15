@@ -2,6 +2,7 @@ package fr.miage.collectivit.salesservice.controller;
 
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
+import fr.miage.collectivit.salesservice.dto.UserPaymentTransactionResponse;
 import fr.miage.collectivit.salesservice.exception.ForbiddenException;
 import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
 import fr.miage.collectivit.salesservice.security.RequiresRole;
@@ -13,17 +14,21 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.time.Instant;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1/sales/payments")
+@RequestMapping({"/v1/sales/payments", "/api/v1/payments"})
 @Tag(
     name = "Payments",
     description = "Bank payment authorization and transaction audit endpoints (RG001)")
@@ -75,6 +80,38 @@ public class PaymentController {
     PaymentAuthorizationResponse response = paymentService.getByReference(reference);
     verifyPaymentAccess(reference, role, userId);
     return ResponseEntity.ok(response);
+  }
+
+  @GetMapping("/users/{userId}/transactions")
+  @RequiresRole({UserRole.CLIENT, UserRole.ADMIN})
+  @Operation(
+      summary = "Extract approved payment transactions for a user within a time interval",
+      description =
+          "Retrieves all approved payment transactions (TRANSACTION_APPROVED) for the given user between 'from' and 'to' timestamps.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(responseCode = "200", description = "Transactions retrieved successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid date range parameters"),
+        @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
+        @ApiResponse(
+            responseCode = "403",
+            description = "Forbidden - Caller cannot access another user's transactions")
+      })
+  public ResponseEntity<List<UserPaymentTransactionResponse>> getUserTransactions(
+      @PathVariable String userId,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+      HttpServletRequest request) {
+    String authenticatedRole = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
+    String authenticatedUserId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+
+    if (!UserRole.ADMIN.name().equalsIgnoreCase(authenticatedRole)
+        && (authenticatedUserId == null || !authenticatedUserId.equalsIgnoreCase(userId))) {
+      throw new ForbiddenException(
+          "Access denied: you do not have permission to view transactions of another user");
+    }
+
+    return ResponseEntity.ok(paymentService.getUserTransactions(userId, from, to));
   }
 
   private void verifyPaymentAccess(String reference, String role, String userId) {
