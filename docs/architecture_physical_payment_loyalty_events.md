@@ -174,3 +174,4 @@ Because `Sales-Service` and `Loyalty-Service` are distinct autonomous microservi
    - `PhysicalPaymentKafkaIntegrationTest`: Verifies real broker end-to-end event production, topic consumption, and points ledger persistence.
 3. **End-to-End Containerized Validation**:
    - Dockerized verification against live Kafka cluster and PostgreSQL containers.
+
