@@ -71,9 +71,11 @@ class PhysicalPaymentEventPublisherTest {
   void shouldIgnoreInvalidEvent() {
     publisher.publishPhysicalPaymentCompleted(null);
     publisher.publishPhysicalPaymentCompleted(
-        new PhysicalPaymentCompletedEvent(null, 10L, "CODE", "user-1", new BigDecimal("10.00"), "EUR", Instant.now()));
+        new PhysicalPaymentCompletedEvent(
+            null, 10L, "CODE", "user-1", new BigDecimal("10.00"), "EUR", Instant.now()));
     publisher.publishPhysicalPaymentCompleted(
-        new PhysicalPaymentCompletedEvent("   ", 10L, "CODE", "user-2", new BigDecimal("10.00"), "EUR", Instant.now()));
+        new PhysicalPaymentCompletedEvent(
+            "   ", 10L, "CODE", "user-2", new BigDecimal("10.00"), "EUR", Instant.now()));
 
     verify(kafkaTemplate, never()).send(any(), any(), any());
   }
@@ -116,4 +118,3 @@ class PhysicalPaymentEventPublisherTest {
         .doesNotThrowAnyException();
   }
 }
-

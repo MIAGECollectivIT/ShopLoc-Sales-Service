@@ -12,7 +12,8 @@ class KafkaTopicConfigTest {
   private final KafkaTopicConfig config = new KafkaTopicConfig();
 
   @Test
-  @DisplayName("Should create NewTopic bean for physical payments with 4 partitions and replica factor 1")
+  @DisplayName(
+      "Should create NewTopic bean for physical payments with 4 partitions and replica factor 1")
   void shouldCreatePhysicalPaymentsTopic() {
     NewTopic topic = config.physicalPaymentsTopic();
 
@@ -23,7 +24,8 @@ class KafkaTopicConfigTest {
   }
 
   @Test
-  @DisplayName("Should create NewTopic bean for order payments with 4 partitions and replica factor 1")
+  @DisplayName(
+      "Should create NewTopic bean for order payments with 4 partitions and replica factor 1")
   void shouldCreateOrderPaymentsTopic() {
     NewTopic topic = config.orderPaymentsTopic();
 
@@ -33,4 +35,3 @@ class KafkaTopicConfigTest {
     assertThat(topic.replicationFactor()).isEqualTo((short) 1);
   }
 }
-

@@ -1,3 +1,4 @@
+@payment
 Feature: Bank Payment Gateway Emulation and Transaction Audit (SLE-79)
 
   Scenario: Authorize a valid payment under rule RG001

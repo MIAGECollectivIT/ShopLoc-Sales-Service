@@ -40,7 +40,7 @@ public class PaymentSteps extends AbstractScenario {
 
   private MockMvc mockMvc;
 
-  @Before
+  @Before("@payment")
   public void setUpScenario() {
     mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
     paymentTransactionRepository.deleteAll();

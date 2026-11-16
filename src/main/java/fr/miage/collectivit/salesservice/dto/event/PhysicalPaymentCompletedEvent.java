@@ -14,4 +14,3 @@ public record PhysicalPaymentCompletedEvent(
     @NotNull @DecimalMin("0.01") BigDecimal amount,
     String currency,
     @NotNull Instant timestamp) {}
-

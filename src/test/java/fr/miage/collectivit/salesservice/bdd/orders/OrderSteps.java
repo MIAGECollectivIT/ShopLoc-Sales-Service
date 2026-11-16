@@ -53,7 +53,7 @@ public class OrderSteps extends AbstractScenario {
   private MockRestServiceServer mockStoreServer;
   private String currentOrderReference;
 
-  @Before
+  @Before("@orders")
   public void setUpScenario() {
     mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
     objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());

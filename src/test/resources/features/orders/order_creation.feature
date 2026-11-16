@@ -1,3 +1,4 @@
+@orders
 Feature: Multi-Store Click & Collect Order Creation and Amount Locking (SLE-186)
 
   Scenario: Successfully create a multi-store click and collect order with calculated totals
