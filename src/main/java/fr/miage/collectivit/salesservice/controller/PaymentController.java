@@ -115,12 +115,11 @@ public class PaymentController {
   }
 
   private void verifyPaymentAccess(String reference, String role, String userId) {
-    if (UserRole.ADMIN.name().equalsIgnoreCase(role)
-        || UserRole.MERCHANT.name().equalsIgnoreCase(role)) {
+    if (UserRole.ADMIN.name().equalsIgnoreCase(role)) {
       return;
     }
     String ownerUserId = paymentService.getUserIdByReference(reference);
-    if (ownerUserId != null && !ownerUserId.equalsIgnoreCase(userId)) {
+    if (ownerUserId == null || !ownerUserId.equalsIgnoreCase(userId)) {
       throw new ForbiddenException(
           "Access denied: you do not have permission to view this payment transaction");
     }

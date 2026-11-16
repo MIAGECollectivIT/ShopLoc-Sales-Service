@@ -203,6 +203,7 @@ class WalletServiceTest {
   @DisplayName(
       "SLE-15: Do not credit wallet when bank payment fails with exception and record audit failure")
   void shouldNotCreditWalletWhenBankFails() {
+    when(walletRepository.findByUserIdForUpdate(USER_ID)).thenReturn(Optional.of(wallet));
     when(paymentService.authorizePayment(any(PaymentAuthorizationRequest.class), eq(USER_ID)))
         .thenThrow(new RuntimeException("Bank gateway communication error"));
 
@@ -232,6 +233,23 @@ class WalletServiceTest {
     assertThat(created.getBalance()).isEqualByComparingTo("0.00");
     assertThat(created.getCurrency()).isEqualTo("EUR");
     verify(walletRepository).save(any(Wallet.class));
+  }
+
+  @Test
+  @DisplayName(
+      "SLE-17: Recover and retrieve wallet when concurrent thread creates wallet simultaneously")
+  void shouldHandleConcurrentWalletCreationGracefully() {
+    when(walletRepository.findByUserId(USER_ID))
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.of(wallet));
+    when(walletRepository.save(any(Wallet.class)))
+        .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
+
+    Wallet created = walletService.getOrCreateWalletEntity(USER_ID);
+
+    assertThat(created).isNotNull();
+    assertThat(created.getUserId()).isEqualTo(USER_ID);
+    assertThat(created.getBalance()).isEqualByComparingTo("20.00");
   }
 
   @Test

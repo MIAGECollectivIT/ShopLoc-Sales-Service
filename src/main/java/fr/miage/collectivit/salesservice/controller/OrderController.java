@@ -143,6 +143,18 @@ public class OrderController {
     String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
     OrderResponse existingOrder = orderProcessingService.getOrderByReference(reference);
     verifyOrderReadAccess(existingOrder, role, userId);
+
+    if (UserRole.CLIENT.name().equalsIgnoreCase(role)) {
+      if (!OrderStatus.CANCELLED.name().equalsIgnoreCase(requestDto.status())) {
+        throw new ForbiddenException(
+            "Access denied: clients are only permitted to cancel their own pending orders");
+      }
+      if (!OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(existingOrder.status())) {
+        throw new ForbiddenException(
+            "Access denied: clients can only cancel orders in PENDING_PAYMENT status");
+      }
+    }
+
     return ResponseEntity.ok(
         orderProcessingService.updateOrderStatus(reference, requestDto.status()));
   }

@@ -6,6 +6,7 @@ import fr.miage.collectivit.salesservice.security.ServiceTokenProvider;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,7 +54,8 @@ public class StoreClient {
   }
 
   public void updateStock(Long storeId, Long productId, int quantityDelta) {
-    String token = serviceTokenProvider.generateServiceToken();
+    String token =
+        serviceTokenProvider != null ? serviceTokenProvider.generateServiceToken() : null;
     try {
       executeStockPatch(storeId, productId, quantityDelta, token);
       logSuccess(storeId, productId, quantityDelta);
@@ -61,6 +63,32 @@ public class StoreClient {
       handleBadRequest(storeId, productId, ex);
     } catch (RestClientException ex) {
       handleClientException(storeId, productId, ex);
+    }
+  }
+
+  public Optional<java.math.BigDecimal> getProductPrice(Long storeId, Long productId) {
+    String token =
+        serviceTokenProvider != null ? serviceTokenProvider.generateServiceToken() : null;
+    try {
+      var requestBuilder =
+          restClient.get().uri("/v1/stores/{storeId}/products/{productId}", storeId, productId);
+      if (token != null && !token.isBlank()) {
+        requestBuilder.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+      }
+      Map<?, ?> response = requestBuilder.retrieve().body(Map.class);
+      if (response != null && response.get("price") != null) {
+        return Optional.of(new java.math.BigDecimal(response.get("price").toString()));
+      }
+      return Optional.empty();
+    } catch (RestClientException ex) {
+      if (log.isDebugEnabled()) {
+        log.debug(
+            "Could not fetch product price from Store Service for store {} product {}: {}",
+            storeId,
+            productId,
+            ex.getMessage());
+      }
+      return Optional.empty();
     }
   }
 
