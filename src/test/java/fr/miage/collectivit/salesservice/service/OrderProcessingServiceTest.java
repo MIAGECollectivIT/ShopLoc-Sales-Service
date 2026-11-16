@@ -298,6 +298,19 @@ class OrderProcessingServiceTest {
   }
 
   @Test
+  @DisplayName("Should reject order creation when unit price is null or non-positive")
+  void shouldRejectOrderCreationWhenUnitPriceNonPositive() {
+    CreateOrderItemRequest zeroPriceItem =
+        new CreateOrderItemRequest(1L, "Store 1", 10L, "Free Product", BigDecimal.ZERO, 1);
+    CreateOrderRequest request =
+        new CreateOrderRequest(List.of(zeroPriceItem), "CLI-1", "test@test.fr");
+
+    assertThatThrownBy(() -> orderProcessingService.createOrder(request, "cust-1", "test@test.fr"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Unit price must be strictly positive");
+  }
+
+  @Test
   @DisplayName("Should rollback previously reserved items when subsequent reservation fails")
   void shouldRollbackStockWhenReservationFails() {
     CreateOrderItemRequest item1 =

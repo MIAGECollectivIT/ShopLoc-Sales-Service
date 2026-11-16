@@ -236,6 +236,23 @@ class WalletServiceTest {
   }
 
   @Test
+  @DisplayName(
+      "SLE-17: Recover and retrieve wallet when concurrent thread creates wallet simultaneously")
+  void shouldHandleConcurrentWalletCreationGracefully() {
+    when(walletRepository.findByUserId(USER_ID))
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.of(wallet));
+    when(walletRepository.save(any(Wallet.class)))
+        .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key"));
+
+    Wallet created = walletService.getOrCreateWalletEntity(USER_ID);
+
+    assertThat(created).isNotNull();
+    assertThat(created.getUserId()).isEqualTo(USER_ID);
+    assertThat(created.getBalance()).isEqualByComparingTo("20.00");
+  }
+
+  @Test
   @DisplayName("SLE-15: Reject reload below strict floor 5.00 €")
   void shouldRejectReloadBelowMinimum() {
     WalletReloadRequest reloadRequest =

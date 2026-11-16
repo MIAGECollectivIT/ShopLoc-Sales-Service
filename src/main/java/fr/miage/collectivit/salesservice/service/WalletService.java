@@ -59,15 +59,20 @@ public class WalletService {
     return walletRepository
         .findByUserId(trimmedUserId)
         .orElseGet(
-            () ->
-                walletRepository.save(
+            () -> {
+              try {
+                return walletRepository.save(
                     Wallet.builder()
                         .userId(trimmedUserId)
                         .balance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
                         .currency(DEFAULT_CURRENCY)
                         .createdAt(Instant.now())
                         .updatedAt(Instant.now())
-                        .build()));
+                        .build());
+              } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+                return walletRepository.findByUserId(trimmedUserId).orElseThrow(() -> ex);
+              }
+            });
   }
 
   /**

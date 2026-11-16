@@ -356,6 +356,10 @@ public class OrderProcessingService {
 
   private void validateItemPrices(List<CreateOrderItemRequest> items) {
     for (CreateOrderItemRequest item : items) {
+      if (item.unitPrice() == null || item.unitPrice().compareTo(BigDecimal.ZERO) <= 0) {
+        throw new IllegalArgumentException(
+            "Unit price must be strictly positive for product #" + item.productId());
+      }
       Optional<BigDecimal> verifiedPrice =
           storeClient.getProductPrice(item.storeId(), item.productId());
       if (verifiedPrice.isPresent() && verifiedPrice.get().compareTo(item.unitPrice()) != 0) {

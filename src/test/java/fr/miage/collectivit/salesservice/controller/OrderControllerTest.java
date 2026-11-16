@@ -395,6 +395,42 @@ class OrderControllerTest {
 
   @Test
   @DisplayName(
+      "PATCH /v1/sales/orders/{ref}/status should return 403 Forbidden when CLIENT tries to cancel already PAID order")
+  void shouldReturn403WhenClientTriesToCancelPaidOrder() throws Exception {
+    UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("CANCELLED");
+
+    OrderResponse paidOrder =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PAID",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    when(orderProcessingService.getOrderByReference("CMD-CC-20261110-9999")).thenReturn(paidOrder);
+
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(patchRequest)))
+        .andExpect(status().isForbidden())
+        .andExpect(
+            jsonPath("$.message")
+                .value("Access denied: clients can only cancel orders in PENDING_PAYMENT status"));
+  }
+
+  @Test
+  @DisplayName(
       "PATCH /v1/sales/orders/{ref}/status should return 400 Bad Request when status is invalid")
   void shouldReturn400WhenStatusInvalid() throws Exception {
     UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("INVALID_STATUS");
