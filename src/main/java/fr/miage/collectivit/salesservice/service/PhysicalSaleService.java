@@ -100,7 +100,25 @@ public class PhysicalSaleService {
             .build();
 
     PhysicalSaleTransaction saved = physicalSaleTransactionRepository.save(transaction);
+    publishKafkaEvents(saved);
 
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Physical in-store sale recorded: reference={}, storeId={}, clientCode={}, amount={} {}, pointsEarned={} ({})",
+          saved.getTransactionReference(),
+          saved.getStoreId(),
+          saved.getClientCode(),
+          saved.getAmount(),
+          saved.getCurrency(),
+          saved.getPointsEarned(),
+          saved.getPointsRateApplied());
+    }
+
+    return PhysicalSaleResponse.fromEntity(saved);
+  }
+
+  @SuppressWarnings("PMD.LawOfDemeter")
+  private void publishKafkaEvents(PhysicalSaleTransaction saved) {
     if (physicalPaymentEventPublisher != null) {
       physicalPaymentEventPublisher.publishPhysicalPaymentCompleted(
           new PhysicalPaymentCompletedEvent(
@@ -124,20 +142,6 @@ public class PhysicalSaleService {
               saved.getCurrency(),
               saved.getCreatedAt()));
     }
-
-    if (log.isInfoEnabled()) {
-      log.info(
-          "Physical in-store sale recorded: reference={}, storeId={}, clientCode={}, amount={} {}, pointsEarned={} ({})",
-          saved.getTransactionReference(),
-          saved.getStoreId(),
-          saved.getClientCode(),
-          saved.getAmount(),
-          saved.getCurrency(),
-          saved.getPointsEarned(),
-          saved.getPointsRateApplied());
-    }
-
-    return PhysicalSaleResponse.fromEntity(saved);
   }
 
   @Transactional(readOnly = true)

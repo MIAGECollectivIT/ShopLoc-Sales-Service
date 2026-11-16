@@ -12,8 +12,7 @@ import org.junit.jupiter.api.Test;
 @DisplayName("DTO Event - PhysicalPaymentCompletedEvent")
 class PhysicalPaymentCompletedEventTest {
 
-  private final ObjectMapper objectMapper =
-      new ObjectMapper().registerModule(new JavaTimeModule());
+  private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
   @Test
   @DisplayName("Should serialize and deserialize PhysicalPaymentCompletedEvent correctly")
@@ -42,4 +41,3 @@ class PhysicalPaymentCompletedEventTest {
     assertThat(deserialized.timestamp()).isEqualTo(now);
   }
 }
-

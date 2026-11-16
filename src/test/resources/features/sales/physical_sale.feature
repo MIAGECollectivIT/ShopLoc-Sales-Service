@@ -1,3 +1,4 @@
+@physical-sale
 Feature: In-store Physical Checkout and Loyalty Points Attribution
 
   Scenario: Record a valid in-store physical checkout with calculated loyalty points

@@ -44,7 +44,7 @@ public class PhysicalSaleSteps extends AbstractScenario {
 
   private MockMvc mockMvc;
 
-  @Before
+  @Before("@physical-sale")
   public void setUpScenario() {
     mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
     physicalSaleTransactionRepository.deleteAll();
