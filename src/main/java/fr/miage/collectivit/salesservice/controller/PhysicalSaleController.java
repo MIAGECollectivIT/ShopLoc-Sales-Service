@@ -80,13 +80,20 @@ public class PhysicalSaleController {
   }
 
   private void verifyPhysicalSaleAccess(PhysicalSaleResponse response, String role, String userId) {
-    if (UserRole.ADMIN.name().equalsIgnoreCase(role)
-        || UserRole.MERCHANT.name().equalsIgnoreCase(role)) {
+    if (UserRole.ADMIN.name().equalsIgnoreCase(role)) {
       return;
     }
-    if (response.customerId() != null && !response.customerId().equalsIgnoreCase(userId)) {
+    if (UserRole.MERCHANT.name().equalsIgnoreCase(role)) {
+      if (response.merchantId() != null && response.merchantId().equalsIgnoreCase(userId)) {
+        return;
+      }
       throw new fr.miage.collectivit.salesservice.exception.ForbiddenException(
-          "Access denied: you do not have permission to view this physical sale");
+          "Access denied: merchants can only view their own store sales");
     }
+    if (response.customerId() != null && response.customerId().equalsIgnoreCase(userId)) {
+      return;
+    }
+    throw new fr.miage.collectivit.salesservice.exception.ForbiddenException(
+        "Access denied: you do not have permission to view this physical sale");
   }
 }

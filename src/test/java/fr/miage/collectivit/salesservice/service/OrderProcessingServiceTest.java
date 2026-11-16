@@ -250,8 +250,51 @@ class OrderProcessingServiceTest {
     assertThat(cancelled.status()).isEqualTo("CANCELLED");
     verify(storeClient).updateStock(1L, 10L, 3);
 
-    OrderResponse expired = orderProcessingService.updateOrderStatus("CMD-CC-2", "EXPIRED");
+    Order order2 =
+        Order.builder()
+            .orderReference("CMD-CC-3")
+            .status(OrderStatus.PENDING_PAYMENT)
+            .items(new ArrayList<>(List.of(item)))
+            .build();
+    when(orderRepository.findByOrderReference("CMD-CC-3")).thenReturn(Optional.of(order2));
+
+    OrderResponse expired = orderProcessingService.updateOrderStatus("CMD-CC-3", "EXPIRED");
     assertThat(expired.status()).isEqualTo("EXPIRED");
+  }
+
+  @Test
+  @DisplayName(
+      "Should throw IllegalStateException when transitioning from terminal CANCELLED status")
+  void shouldThrowWhenTransitioningFromTerminalStatus() {
+    Order cancelledOrder =
+        Order.builder()
+            .orderReference("CMD-CC-TERMINAL")
+            .status(OrderStatus.CANCELLED)
+            .items(new ArrayList<>())
+            .build();
+
+    when(orderRepository.findByOrderReference("CMD-CC-TERMINAL"))
+        .thenReturn(Optional.of(cancelledOrder));
+
+    assertThatThrownBy(() -> orderProcessingService.updateOrderStatus("CMD-CC-TERMINAL", "PAID"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Cannot change status of an order");
+  }
+
+  @Test
+  @DisplayName("Should reject order creation when unit price does not match store price")
+  void shouldRejectOrderCreationWhenPriceMismatched() {
+    CreateOrderItemRequest tamperedItem =
+        new CreateOrderItemRequest(
+            1L, "Store 1", 10L, "Expensive Product", new BigDecimal("0.01"), 1);
+    CreateOrderRequest request =
+        new CreateOrderRequest(List.of(tamperedItem), "CLI-1", "test@test.fr");
+
+    when(storeClient.getProductPrice(1L, 10L)).thenReturn(Optional.of(new BigDecimal("59.99")));
+
+    assertThatThrownBy(() -> orderProcessingService.createOrder(request, "cust-1", "test@test.fr"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Price mismatch");
   }
 
   @Test

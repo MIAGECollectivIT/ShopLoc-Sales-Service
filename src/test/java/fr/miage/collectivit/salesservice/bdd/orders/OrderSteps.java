@@ -63,6 +63,9 @@ public class OrderSteps extends AbstractScenario {
     mockStoreServer
         .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/stock")))
         .andRespond(withSuccess("{\"status\":\"OK\"}", MediaType.APPLICATION_JSON));
+    mockStoreServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/")))
+        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
     storeClient.setRestClient(builder.build());
   }
 
@@ -125,6 +128,9 @@ public class OrderSteps extends AbstractScenario {
             withBadRequest()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"error\":\"Insufficient Stock\"}"));
+    mockStoreServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/")))
+        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
     storeClient.setRestClient(builder.build());
   }
 

@@ -43,7 +43,9 @@ import org.springframework.transaction.annotation.Transactional;
   "PMD.LawOfDemeter",
   "PMD.CouplingBetweenObjects",
   "PMD.ExcessiveImports",
-  "PMD.GodClass"
+  "PMD.GodClass",
+  "PMD.TooManyMethods",
+  "PMD.CyclomaticComplexity"
 })
 public class OrderProcessingService {
 
@@ -61,6 +63,7 @@ public class OrderProcessingService {
       throw new IllegalArgumentException("Order must contain at least one item");
     }
 
+    validateItemPrices(request.items());
     reserveStock(request.items());
 
     String effectiveEmail =
@@ -197,6 +200,11 @@ public class OrderProcessingService {
             status);
       }
       return mapToResponse(order);
+    }
+
+    if (order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.COMPLETED) {
+      throw new IllegalStateException(
+          "Cannot change status of an order that is already " + order.getStatus());
     }
 
     releaseStockIfCancelledOrExpired(order, status);
@@ -346,10 +354,28 @@ public class OrderProcessingService {
     }
   }
 
+  private void validateItemPrices(List<CreateOrderItemRequest> items) {
+    for (CreateOrderItemRequest item : items) {
+      Optional<BigDecimal> verifiedPrice =
+          storeClient.getProductPrice(item.storeId(), item.productId());
+      if (verifiedPrice.isPresent() && verifiedPrice.get().compareTo(item.unitPrice()) != 0) {
+        throw new IllegalArgumentException(
+            "Price mismatch for product #"
+                + item.productId()
+                + ": expected "
+                + verifiedPrice.get()
+                + " EUR but received "
+                + item.unitPrice()
+                + " EUR");
+      }
+    }
+  }
+
   private String generateOrderReference() {
     String datePart = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-    int randomPart = 1000 + RANDOM.nextInt(9000);
-    return "CMD-CC-" + datePart + "-" + randomPart;
+    String randomSuffix =
+        UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+    return "CMD-CC-" + datePart + "-" + randomSuffix;
   }
 
   private record ReservedItem(Long storeId, Long productId, int quantity) {}

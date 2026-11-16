@@ -203,6 +203,7 @@ class WalletServiceTest {
   @DisplayName(
       "SLE-15: Do not credit wallet when bank payment fails with exception and record audit failure")
   void shouldNotCreditWalletWhenBankFails() {
+    when(walletRepository.findByUserIdForUpdate(USER_ID)).thenReturn(Optional.of(wallet));
     when(paymentService.authorizePayment(any(PaymentAuthorizationRequest.class), eq(USER_ID)))
         .thenThrow(new RuntimeException("Bank gateway communication error"));
 
