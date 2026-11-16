@@ -1,0 +1,35 @@
+meta {
+  name: 01 - Connexion Client (Pierre) - 200
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{usersUrl}}/v1/users/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "USER",
+    "password": "PASSWORD"
+  }
+}
+
+script:post-response {
+  if (res.status === 200 && res.body && res.body.token) {
+    bru.setEnvVar("clientToken", res.body.token);
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.token: isDefined
+  res.body.user.role: eq CLIENT
+}
+

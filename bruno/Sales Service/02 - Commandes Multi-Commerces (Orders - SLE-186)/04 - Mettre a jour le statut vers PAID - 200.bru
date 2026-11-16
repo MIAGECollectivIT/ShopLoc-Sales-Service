@@ -1,0 +1,28 @@
+meta {
+  name: 04 - Mettre a jour le statut vers PAID - 200
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{baseUrl}}/v1/sales/orders/{{orderReference}}/status
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{merchantToken}}
+}
+
+body:json {
+  {
+    "status": "PAID"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.orderReference: eq {{orderReference}}
+  res.body.status: eq PAID
+}

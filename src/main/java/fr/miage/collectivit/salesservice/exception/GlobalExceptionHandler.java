@@ -39,9 +39,34 @@ public class GlobalExceptionHandler {
     return buildResponse(HttpStatus.BAD_REQUEST, "Malformed JSON request payload");
   }
 
-  @ExceptionHandler(PaymentNotFoundException.class)
-  public ResponseEntity<Map<String, Object>> handlePaymentNotFound(PaymentNotFoundException ex) {
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+    return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+  }
+
+  @ExceptionHandler(ForbiddenException.class)
+  public ResponseEntity<Map<String, Object>> handleForbidden(ForbiddenException ex) {
+    return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage());
+  }
+
+  @ExceptionHandler({
+    PaymentNotFoundException.class,
+    PhysicalSaleNotFoundException.class,
+    OrderNotFoundException.class
+  })
+  public ResponseEntity<Map<String, Object>> handleResourceNotFound(RuntimeException ex) {
     return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+  }
+
+  @ExceptionHandler({InsufficientStockException.class, InsufficientWalletBalanceException.class})
+  public ResponseEntity<Map<String, Object>> handleInsufficientFundsOrStock(RuntimeException ex) {
+    return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+  }
+
+  @ExceptionHandler(StoreServiceUnavailableException.class)
+  public ResponseEntity<Map<String, Object>> handleStoreServiceUnavailable(
+      StoreServiceUnavailableException ex) {
+    return buildResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
   }
 
   @ExceptionHandler(PaymentGatewayException.class)

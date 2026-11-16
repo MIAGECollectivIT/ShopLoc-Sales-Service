@@ -1,0 +1,17 @@
+meta {
+  name: 02 - Verifier Actuator Health (Public) - 200
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/actuator/health
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq "UP"
+}
+

@@ -1,0 +1,19 @@
+meta {
+  name: 06 - Consulter une commande inexistante - 404
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/v1/sales/orders/CMD-CC-NONEXISTENT-9999
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{adminToken}}
+}
+
+assert {
+  res.status: eq 404
+}
