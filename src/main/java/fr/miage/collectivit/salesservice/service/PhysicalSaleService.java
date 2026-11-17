@@ -1,6 +1,7 @@
 package fr.miage.collectivit.salesservice.service;
 
 import fr.miage.collectivit.salesservice.client.LoyaltyRateClient;
+import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleRequest;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleResponse;
@@ -32,30 +33,51 @@ public class PhysicalSaleService {
 
   private final PhysicalSaleTransactionRepository physicalSaleTransactionRepository;
   private final LoyaltyRateClient loyaltyRateClient;
+  private final StoreClient storeClient;
   private final TransactionEventPublisher transactionEventPublisher;
   private final PhysicalPaymentEventPublisher physicalPaymentEventPublisher;
 
   public PhysicalSaleService(
       PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
       LoyaltyRateClient loyaltyRateClient) {
-    this(physicalSaleTransactionRepository, loyaltyRateClient, null, null);
+    this(physicalSaleTransactionRepository, loyaltyRateClient, null, null, null);
   }
 
   public PhysicalSaleService(
       PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
       LoyaltyRateClient loyaltyRateClient,
       TransactionEventPublisher transactionEventPublisher) {
-    this(physicalSaleTransactionRepository, loyaltyRateClient, transactionEventPublisher, null);
+    this(
+        physicalSaleTransactionRepository,
+        loyaltyRateClient,
+        null,
+        transactionEventPublisher,
+        null);
+  }
+
+  public PhysicalSaleService(
+      PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
+      LoyaltyRateClient loyaltyRateClient,
+      TransactionEventPublisher transactionEventPublisher,
+      PhysicalPaymentEventPublisher physicalPaymentEventPublisher) {
+    this(
+        physicalSaleTransactionRepository,
+        loyaltyRateClient,
+        null,
+        transactionEventPublisher,
+        physicalPaymentEventPublisher);
   }
 
   @Autowired
   public PhysicalSaleService(
       PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
       LoyaltyRateClient loyaltyRateClient,
+      @Autowired(required = false) StoreClient storeClient,
       @Autowired(required = false) TransactionEventPublisher transactionEventPublisher,
       @Autowired(required = false) PhysicalPaymentEventPublisher physicalPaymentEventPublisher) {
     this.physicalSaleTransactionRepository = physicalSaleTransactionRepository;
     this.loyaltyRateClient = loyaltyRateClient;
+    this.storeClient = storeClient;
     this.transactionEventPublisher = transactionEventPublisher;
     this.physicalPaymentEventPublisher = physicalPaymentEventPublisher;
   }
@@ -63,6 +85,10 @@ public class PhysicalSaleService {
   @Transactional
   @SuppressWarnings("PMD.LawOfDemeter")
   public PhysicalSaleResponse recordPhysicalSale(PhysicalSaleRequest request, String callerUserId) {
+    if (storeClient != null) {
+      storeClient.verifyStoreActive(request.storeId());
+    }
+
     MerchantLoyaltyRateDto loyaltyRate = loyaltyRateClient.getStoreLoyaltyRate(request.storeId());
 
     BigDecimal normalizedAmount = request.amount().setScale(2, RoundingMode.HALF_UP);

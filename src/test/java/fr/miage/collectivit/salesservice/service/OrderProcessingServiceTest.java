@@ -13,6 +13,7 @@ import fr.miage.collectivit.salesservice.dto.CreateOrderItemRequest;
 import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
+import fr.miage.collectivit.salesservice.exception.RevokedStoreException;
 import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.model.OrderItem;
 import fr.miage.collectivit.salesservice.model.OrderStatus;
@@ -292,5 +293,23 @@ class OrderProcessingServiceTest {
 
     assertThat(response.customerId()).isNull();
     assertThat(response.customerEmail()).isEqualTo("guest@fallback.com");
+  }
+
+  @Test
+  @DisplayName(
+      "Should reject order creation when a store in the order is revoked (SLE-70, SLE-256)")
+  void shouldRejectOrderCreationWhenStoreIsRevoked() {
+    CreateOrderItemRequest item =
+        new CreateOrderItemRequest(
+            99L, "Boutique Révoquée", 2L, "Article", new BigDecimal("10.00"), 1);
+    CreateOrderRequest request =
+        new CreateOrderRequest(List.of(item), "CLI-99482", "client@example.com");
+
+    doThrow(new RevokedStoreException(99L)).when(storeClient).verifyStoreActive(99L);
+
+    assertThatThrownBy(
+            () -> orderProcessingService.createOrder(request, "user-42", "client@example.com"))
+        .isInstanceOf(RevokedStoreException.class)
+        .hasMessageContaining("99");
   }
 }

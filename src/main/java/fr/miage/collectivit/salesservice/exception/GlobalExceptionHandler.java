@@ -52,10 +52,24 @@ public class GlobalExceptionHandler {
   @ExceptionHandler({
     PaymentNotFoundException.class,
     PhysicalSaleNotFoundException.class,
-    OrderNotFoundException.class
+    OrderNotFoundException.class,
+    StoreNotFoundException.class
   })
   public ResponseEntity<Map<String, Object>> handleResourceNotFound(RuntimeException ex) {
     return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+  }
+
+  @ExceptionHandler(RevokedStoreException.class)
+  public ResponseEntity<Map<String, Object>> handleRevokedStore(RevokedStoreException ex) {
+    Map<String, Object> body = new HashMap<>();
+    body.put(KEY_TIMESTAMP, Instant.now().toString());
+    body.put(KEY_STATUS, HttpStatus.UNPROCESSABLE_ENTITY.value());
+    body.put("code", "REVOKED_STORE");
+    body.put(KEY_MESSAGE, ex.getMessage());
+    if (ex.getStoreId() != null) {
+      body.put("storeId", ex.getStoreId());
+    }
+    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
   }
 
   @ExceptionHandler({InsufficientStockException.class, InsufficientWalletBalanceException.class})

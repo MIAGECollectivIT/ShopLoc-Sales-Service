@@ -3,16 +3,19 @@ package fr.miage.collectivit.salesservice.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import fr.miage.collectivit.salesservice.client.LoyaltyRateClient;
+import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleRequest;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleResponse;
 import fr.miage.collectivit.salesservice.dto.event.PhysicalPaymentCompletedEvent;
 import fr.miage.collectivit.salesservice.event.PhysicalPaymentEventPublisher;
 import fr.miage.collectivit.salesservice.exception.PhysicalSaleNotFoundException;
+import fr.miage.collectivit.salesservice.exception.RevokedStoreException;
 import fr.miage.collectivit.salesservice.model.PhysicalSaleTransaction;
 import fr.miage.collectivit.salesservice.repository.PhysicalSaleTransactionRepository;
 import java.math.BigDecimal;
@@ -31,6 +34,7 @@ class PhysicalSaleServiceTest {
 
   @Mock private PhysicalSaleTransactionRepository repository;
   @Mock private LoyaltyRateClient loyaltyRateClient;
+  @Mock private StoreClient storeClient;
   @Mock private PhysicalPaymentEventPublisher physicalPaymentEventPublisher;
 
   private PhysicalSaleService physicalSaleService;
@@ -38,7 +42,23 @@ class PhysicalSaleServiceTest {
   @BeforeEach
   void setUp() {
     physicalSaleService =
-        new PhysicalSaleService(repository, loyaltyRateClient, null, physicalPaymentEventPublisher);
+        new PhysicalSaleService(
+            repository, loyaltyRateClient, storeClient, null, physicalPaymentEventPublisher);
+  }
+
+  @Test
+  @DisplayName("Should reject physical sale when store is revoked (SLE-70, SLE-256)")
+  void shouldRejectPhysicalSaleWhenStoreIsRevoked() {
+    Long storeId = 10L;
+    PhysicalSaleRequest request =
+        new PhysicalSaleRequest(
+            storeId, "k7P9xQ2", "cust-123", new BigDecimal("25.50"), "EUR", "CASH");
+
+    doThrow(new RevokedStoreException(storeId)).when(storeClient).verifyStoreActive(storeId);
+
+    assertThatThrownBy(() -> physicalSaleService.recordPhysicalSale(request, "merchant-123"))
+        .isInstanceOf(RevokedStoreException.class)
+        .hasMessageContaining("10");
   }
 
   @Test

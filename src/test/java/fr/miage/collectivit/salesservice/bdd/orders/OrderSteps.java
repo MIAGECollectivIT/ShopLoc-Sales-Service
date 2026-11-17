@@ -61,6 +61,11 @@ public class OrderSteps extends AbstractScenario {
     RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8089");
     mockStoreServer = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
     mockStoreServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.matchesPattern(".*/v1/stores/\\d+")))
+        .andRespond(
+            withSuccess(
+                "{\"id\":1,\"name\":\"Store\",\"status\":\"ACTIVE\"}", MediaType.APPLICATION_JSON));
+    mockStoreServer
         .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/stock")))
         .andRespond(withSuccess("{\"status\":\"OK\"}", MediaType.APPLICATION_JSON));
     storeClient.setRestClient(builder.build());
@@ -115,6 +120,12 @@ public class OrderSteps extends AbstractScenario {
   public void givenProductHasInsufficientStock(Long productId, Long storeId) {
     RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8089");
     mockStoreServer = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
+    mockStoreServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.matchesPattern(".*/v1/stores/\\d+")))
+        .andRespond(
+            withSuccess(
+                "{\"id\":" + storeId + ",\"name\":\"Store\",\"status\":\"ACTIVE\"}",
+                MediaType.APPLICATION_JSON));
     mockStoreServer
         .expect(
             ExpectedCount.manyTimes(),

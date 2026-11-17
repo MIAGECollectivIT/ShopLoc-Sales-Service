@@ -61,6 +61,12 @@ public class OrderProcessingService {
       throw new IllegalArgumentException("Order must contain at least one item");
     }
 
+    if (storeClient != null) {
+      for (CreateOrderItemRequest item : request.items()) {
+        storeClient.verifyStoreActive(item.storeId());
+      }
+    }
+
     reserveStock(request.items());
 
     String effectiveEmail =

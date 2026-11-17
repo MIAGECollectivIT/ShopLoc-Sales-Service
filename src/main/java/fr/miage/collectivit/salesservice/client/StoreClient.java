@@ -1,6 +1,9 @@
 package fr.miage.collectivit.salesservice.client;
 
+import fr.miage.collectivit.salesservice.dto.StoreDto;
 import fr.miage.collectivit.salesservice.exception.InsufficientStockException;
+import fr.miage.collectivit.salesservice.exception.RevokedStoreException;
+import fr.miage.collectivit.salesservice.exception.StoreNotFoundException;
 import fr.miage.collectivit.salesservice.exception.StoreServiceUnavailableException;
 import fr.miage.collectivit.salesservice.security.ServiceTokenProvider;
 import java.net.http.HttpClient;
@@ -20,7 +23,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * HTTP REST client communicating with Store Service to reserve and release product stocks (Saga).
+ * HTTP REST client communicating with Store Service to reserve and release product stocks (Saga)
+ * and verify store active status (SLE-70, SLE-256).
  */
 @Slf4j
 @Setter
@@ -28,6 +32,7 @@ import org.springframework.web.client.RestClientException;
 public class StoreClient {
 
   public static final String STOCK_UPDATE_PATH = "/v1/stores/{storeId}/products/{productId}/stock";
+  public static final String STORE_BY_ID_PATH = "/v1/stores/{storeId}";
 
   private final ServiceTokenProvider serviceTokenProvider;
   private RestClient restClient;
@@ -52,6 +57,34 @@ public class StoreClient {
     return factory;
   }
 
+  public void verifyStoreActive(Long storeId) {
+    if (storeId == null) {
+      throw new IllegalArgumentException("Store ID is mandatory");
+    }
+    String token = serviceTokenProvider.generateServiceToken();
+    try {
+      var requestBuilder = restClient.get().uri(STORE_BY_ID_PATH, storeId);
+      if (token != null && !token.isBlank()) {
+        requestBuilder.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+      }
+      StoreDto store = requestBuilder.retrieve().body(StoreDto.class);
+      if (store != null && store.isRevoked()) {
+        log.warn("Store #{} is REVOKED - sales/order operations are prohibited", storeId);
+        throw new RevokedStoreException(storeId);
+      }
+    } catch (HttpClientErrorException.NotFound ex) {
+      throw new StoreNotFoundException("Commerce introuvable avec l'ID: " + storeId);
+    } catch (HttpClientErrorException.UnprocessableEntity ex) {
+      throw new RevokedStoreException(storeId);
+    } catch (RevokedStoreException ex) {
+      throw ex;
+    } catch (RestClientException ex) {
+      log.error("Failed to verify store status for store {}: {}", storeId, ex.getMessage());
+      throw new StoreServiceUnavailableException(
+          "Impossible de vérifier le statut du commerce", ex);
+    }
+  }
+
   public void updateStock(Long storeId, Long productId, int quantityDelta) {
     String token = serviceTokenProvider.generateServiceToken();
     try {
@@ -59,6 +92,10 @@ public class StoreClient {
       logSuccess(storeId, productId, quantityDelta);
     } catch (HttpClientErrorException.BadRequest ex) {
       handleBadRequest(storeId, productId, ex);
+    } catch (HttpClientErrorException.UnprocessableEntity ex) {
+      log.warn(
+          "Stock update rejected on revoked store {}: {}", storeId, ex.getResponseBodyAsString());
+      throw new RevokedStoreException(storeId);
     } catch (RestClientException ex) {
       handleClientException(storeId, productId, ex);
     }

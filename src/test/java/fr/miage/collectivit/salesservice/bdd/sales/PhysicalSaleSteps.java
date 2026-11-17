@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import fr.miage.collectivit.salesservice.bdd.common.AbstractScenario;
 import fr.miage.collectivit.salesservice.bdd.common.ScenarioContext;
 import fr.miage.collectivit.salesservice.client.LoyaltyRateClient;
+import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.model.PhysicalSaleTransaction;
 import fr.miage.collectivit.salesservice.repository.PhysicalSaleTransactionRepository;
 import io.cucumber.java.Before;
@@ -20,6 +21,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
+import org.hamcrest.Matchers;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -40,6 +42,7 @@ public class PhysicalSaleSteps extends AbstractScenario {
   private final WebApplicationContext webApplicationContext;
   private final ScenarioContext scenarioContext;
   private final LoyaltyRateClient loyaltyRateClient;
+  private final StoreClient storeClient;
   private final PhysicalSaleTransactionRepository physicalSaleTransactionRepository;
 
   private MockMvc mockMvc;
@@ -53,6 +56,17 @@ public class PhysicalSaleSteps extends AbstractScenario {
     MockRestServiceServer mockServer = MockRestServiceServer.bindTo(builder).build();
     loyaltyRateClient.setRestClient(builder.build());
     scenarioContext.setMockLoyaltyServer(mockServer);
+
+    RestClient.Builder storeBuilder = RestClient.builder().baseUrl("http://localhost:8089");
+    MockRestServiceServer storeMockServer =
+        MockRestServiceServer.bindTo(storeBuilder).ignoreExpectOrder(true).build();
+    storeMockServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.matchesPattern(".*/v1/stores/\\d+")))
+        .andRespond(
+            withSuccess(
+                "{\"id\":10,\"name\":\"Store\",\"status\":\"ACTIVE\"}",
+                MediaType.APPLICATION_JSON));
+    storeClient.setRestClient(storeBuilder.build());
   }
 
   @Given("the store {long} has a loyalty rate of {double} EUR for {double} PTS")
