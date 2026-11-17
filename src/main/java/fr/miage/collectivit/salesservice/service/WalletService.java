@@ -59,15 +59,20 @@ public class WalletService {
     return walletRepository
         .findByUserId(trimmedUserId)
         .orElseGet(
-            () ->
-                walletRepository.save(
+            () -> {
+              try {
+                return walletRepository.save(
                     Wallet.builder()
                         .userId(trimmedUserId)
                         .balance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
                         .currency(DEFAULT_CURRENCY)
                         .createdAt(Instant.now())
                         .updatedAt(Instant.now())
-                        .build()));
+                        .build());
+              } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+                return walletRepository.findByUserId(trimmedUserId).orElseThrow(() -> ex);
+              }
+            });
   }
 
   /**
@@ -145,6 +150,10 @@ public class WalletService {
 
     BigDecimal amount = request.amount().setScale(2, RoundingMode.HALF_UP);
     validateReloadAmount(amount);
+
+    // Lock the citizen wallet first to serialize operations and guarantee accurate rolling limit
+    // checks
+    Wallet wallet = getOrCreateWalletEntityForUpdate(trimmedUserId);
     verifyWeeklyReloadLimit(trimmedUserId, amount);
 
     String paymentToken =
@@ -165,8 +174,6 @@ public class WalletService {
       throw ex;
     }
 
-    // Credit the wallet with row-level pessimistic locking
-    Wallet wallet = getOrCreateWalletEntityForUpdate(trimmedUserId);
     BigDecimal newBalance = wallet.getBalance().add(amount).setScale(2, RoundingMode.HALF_UP);
     wallet.setBalance(newBalance);
     Wallet savedWallet = walletRepository.save(wallet);

@@ -307,6 +307,185 @@ class OrderControllerTest {
 
   @Test
   @DisplayName(
+      "PATCH /v1/sales/orders/{ref}/status should return 200 OK when CLIENT sets status to PAID upon checkout settlement")
+  void shouldAllowClientToSetStatusPaidForTheirPendingOrder() throws Exception {
+    UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("PAID");
+
+    OrderResponse existingOrder =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PENDING_PAYMENT",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    OrderResponse paidOrder =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PAID",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    when(orderProcessingService.getOrderByReference("CMD-CC-20261110-9999"))
+        .thenReturn(existingOrder);
+    when(orderProcessingService.updateOrderStatus(eq("CMD-CC-20261110-9999"), eq("PAID")))
+        .thenReturn(paidOrder);
+
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(patchRequest)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("PAID"));
+  }
+
+  @Test
+  @DisplayName(
+      "PATCH /v1/sales/orders/{ref}/status should return 403 Forbidden when CLIENT attempts to set status to COMPLETED")
+  void shouldReturn403WhenClientAttemptsToSetStatusCompleted() throws Exception {
+    UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("COMPLETED");
+
+    OrderResponse existingOrder =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PENDING_PAYMENT",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    when(orderProcessingService.getOrderByReference("CMD-CC-20261110-9999"))
+        .thenReturn(existingOrder);
+
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(patchRequest)))
+        .andExpect(status().isForbidden())
+        .andExpect(
+            jsonPath("$.message")
+                .value(
+                    org.hamcrest.Matchers.containsString(
+                        "Access denied: clients are only permitted to pay or cancel their own pending orders")));
+  }
+
+  @Test
+  @DisplayName(
+      "PATCH /v1/sales/orders/{ref}/status should return 200 OK when CLIENT cancels their own pending order")
+  void shouldAllowClientToCancelTheirPendingOrder() throws Exception {
+    UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("CANCELLED");
+
+    OrderResponse existingOrder =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PENDING_PAYMENT",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    OrderResponse cancelledOrder =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "CANCELLED",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    when(orderProcessingService.getOrderByReference("CMD-CC-20261110-9999"))
+        .thenReturn(existingOrder);
+    when(orderProcessingService.updateOrderStatus(eq("CMD-CC-20261110-9999"), eq("CANCELLED")))
+        .thenReturn(cancelledOrder);
+
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(patchRequest)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("CANCELLED"));
+  }
+
+  @Test
+  @DisplayName(
+      "PATCH /v1/sales/orders/{ref}/status should return 403 Forbidden when CLIENT tries to cancel already PAID order")
+  void shouldReturn403WhenClientTriesToCancelPaidOrder() throws Exception {
+    UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("CANCELLED");
+
+    OrderResponse paidOrder =
+        new OrderResponse(
+            10L,
+            "CMD-CC-20261110-9999",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PAID",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(),
+            List.of());
+
+    when(orderProcessingService.getOrderByReference("CMD-CC-20261110-9999")).thenReturn(paidOrder);
+
+    mockMvc
+        .perform(
+            patch("/v1/sales/orders/CMD-CC-20261110-9999/status")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, "CLIENT")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "cust-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(patchRequest)))
+        .andExpect(status().isForbidden())
+        .andExpect(
+            jsonPath("$.message")
+                .value("Access denied: clients can only cancel orders in PENDING_PAYMENT status"));
+  }
+
+  @Test
+  @DisplayName(
       "PATCH /v1/sales/orders/{ref}/status should return 400 Bad Request when status is invalid")
   void shouldReturn400WhenStatusInvalid() throws Exception {
     UpdateOrderStatusRequest patchRequest = new UpdateOrderStatusRequest("INVALID_STATUS");

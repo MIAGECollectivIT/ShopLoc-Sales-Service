@@ -1,11 +1,13 @@
 package fr.miage.collectivit.salesservice.client;
 
 import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
+import fr.miage.collectivit.salesservice.security.ServiceTokenProvider;
 import java.time.Duration;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -17,11 +19,14 @@ import org.springframework.web.client.RestClientException;
 @Component
 public class LoyaltyRateClient {
 
+  private final ServiceTokenProvider serviceTokenProvider;
   private RestClient restClient;
 
   @Autowired
   public LoyaltyRateClient(
+      ServiceTokenProvider serviceTokenProvider,
       @Value("${services.loyalty.url:http://loyalty-service:8080}") String loyaltyServiceUrl) {
+    this.serviceTokenProvider = serviceTokenProvider;
     SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
     requestFactory.setConnectTimeout(Duration.ofSeconds(3));
     requestFactory.setReadTimeout(Duration.ofSeconds(5));
@@ -30,15 +35,24 @@ public class LoyaltyRateClient {
   }
 
   public LoyaltyRateClient(RestClient restClient) {
+    this(null, restClient);
+  }
+
+  public LoyaltyRateClient(ServiceTokenProvider serviceTokenProvider, RestClient restClient) {
+    this.serviceTokenProvider = serviceTokenProvider;
     this.restClient = restClient;
   }
 
   public MerchantLoyaltyRateDto getStoreLoyaltyRate(Long storeId) {
+    String token =
+        serviceTokenProvider != null ? serviceTokenProvider.generateServiceToken() : null;
     try {
+      var requestBuilder = restClient.get().uri("/v1/loyalty/merchants/{storeId}/rates", storeId);
+      if (token != null && !token.isBlank()) {
+        requestBuilder.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+      }
       MerchantLoyaltyRateDto rate =
-          restClient
-              .get()
-              .uri("/v1/loyalty/merchants/{storeId}/rates", storeId)
+          requestBuilder
               .retrieve()
               .onStatus(
                   HttpStatusCode::is4xxClientError,

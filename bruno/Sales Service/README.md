@@ -41,7 +41,8 @@ bruno/Sales Service/
     ├── 04 - Rejet creation commande sans storeId - 400.bru
     ├── 05 - Rejet creation commande sans productId - 400.bru
     ├── 06 - Rejet mise a jour statut avec valeur invalide - 400.bru
-    └── 07 - Rejet mise a jour statut sur commande inexistante - 404.bru
+    ├── 07 - Rejet mise a jour statut sur commande inexistante - 404.bru
+    └── 08 - Rejet mise a jour statut par un role CLIENT - 403.bru
 ```
 
 ---
