@@ -145,9 +145,12 @@ public class OrderController {
     verifyOrderReadAccess(existingOrder, role, userId);
 
     if (UserRole.CLIENT.name().equalsIgnoreCase(role)) {
-      if (!OrderStatus.CANCELLED.name().equalsIgnoreCase(requestDto.status())) {
+      boolean isAllowedStatus =
+          OrderStatus.PAID.name().equalsIgnoreCase(requestDto.status())
+              || OrderStatus.CANCELLED.name().equalsIgnoreCase(requestDto.status());
+      if (!isAllowedStatus) {
         throw new ForbiddenException(
-            "Access denied: clients are only permitted to cancel their own pending orders");
+            "Access denied: clients are only permitted to pay or cancel their own pending orders");
       }
       if (!OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(existingOrder.status())) {
         throw new ForbiddenException(
