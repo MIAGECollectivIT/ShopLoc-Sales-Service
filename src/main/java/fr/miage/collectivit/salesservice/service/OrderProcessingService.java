@@ -6,6 +6,9 @@ import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderItemResponse;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
+import fr.miage.collectivit.salesservice.dto.event.OrderPaidKafkaEvent;
+import fr.miage.collectivit.salesservice.dto.event.StoreOrderBreakdown;
+import fr.miage.collectivit.salesservice.event.OrderPaymentEventPublisher;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
 import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.model.OrderItem;
@@ -20,10 +23,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -55,6 +60,7 @@ public class OrderProcessingService {
   private final OrderRepository orderRepository;
   private final StoreClient storeClient;
   private final ApplicationEventPublisher applicationEventPublisher;
+  private final OrderPaymentEventPublisher orderPaymentEventPublisher;
 
   @Transactional
   public OrderResponse createOrder(
@@ -215,6 +221,7 @@ public class OrderProcessingService {
 
     if (status == OrderStatus.PAID) {
       applicationEventPublisher.publishEvent(new OrderPaidEvent(updated.getOrderReference()));
+      publishKafkaOrderPaidEvent(updated);
     }
 
     if (log.isInfoEnabled()) {
@@ -380,6 +387,47 @@ public class OrderProcessingService {
     String randomSuffix =
         UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
     return "CMD-CC-" + datePart + "-" + randomSuffix;
+  }
+
+  private void publishKafkaOrderPaidEvent(Order order) {
+    if (orderPaymentEventPublisher == null) {
+      return;
+    }
+    List<StoreOrderBreakdown> breakdowns = computeStoreBreakdowns(order.getItems());
+    OrderPaidKafkaEvent kafkaEvent =
+        new OrderPaidKafkaEvent(
+            order.getOrderReference(),
+            order.getCustomerId(),
+            order.getClientCode(),
+            order.getTotalAmount(),
+            order.getCurrency(),
+            breakdowns,
+            Instant.now());
+    orderPaymentEventPublisher.publishOrderPaid(kafkaEvent);
+  }
+
+  private List<StoreOrderBreakdown> computeStoreBreakdowns(List<OrderItem> items) {
+    if (items == null || items.isEmpty()) {
+      return Collections.emptyList();
+    }
+    Map<Long, BigDecimal> storeAmounts = new LinkedHashMap<>();
+    Map<Long, String> storeNames = new LinkedHashMap<>();
+    for (OrderItem item : items) {
+      Long storeId = item.getStoreId();
+      if (storeId == null) {
+        continue;
+      }
+      BigDecimal itemTotal = Objects.requireNonNullElse(item.getTotalPrice(), BigDecimal.ZERO);
+      storeAmounts.merge(storeId, itemTotal, BigDecimal::add);
+      if (item.getStoreName() != null) {
+        storeNames.putIfAbsent(storeId, item.getStoreName());
+      }
+    }
+    List<StoreOrderBreakdown> breakdowns = new ArrayList<>();
+    storeAmounts.forEach(
+        (storeId, amount) ->
+            breakdowns.add(new StoreOrderBreakdown(storeId, storeNames.get(storeId), amount)));
+    return breakdowns;
   }
 
   private record ReservedItem(Long storeId, Long productId, int quantity) {}
