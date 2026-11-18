@@ -23,10 +23,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -391,26 +393,7 @@ public class OrderProcessingService {
     if (orderPaymentEventPublisher == null) {
       return;
     }
-    Map<Long, BigDecimal> storeAmounts = new LinkedHashMap<>();
-    Map<Long, String> storeNames = new LinkedHashMap<>();
-    if (order.getItems() != null) {
-      for (OrderItem item : order.getItems()) {
-        if (item.getStoreId() != null) {
-          BigDecimal current = storeAmounts.getOrDefault(item.getStoreId(), BigDecimal.ZERO);
-          BigDecimal itemTotal =
-              item.getTotalPrice() != null ? item.getTotalPrice() : BigDecimal.ZERO;
-          storeAmounts.put(item.getStoreId(), current.add(itemTotal));
-          if (item.getStoreName() != null && !storeNames.containsKey(item.getStoreId())) {
-            storeNames.put(item.getStoreId(), item.getStoreName());
-          }
-        }
-      }
-    }
-    List<StoreOrderBreakdown> breakdowns = new ArrayList<>();
-    storeAmounts.forEach(
-        (storeId, amount) ->
-            breakdowns.add(new StoreOrderBreakdown(storeId, storeNames.get(storeId), amount)));
-
+    List<StoreOrderBreakdown> breakdowns = computeStoreBreakdowns(order.getItems());
     OrderPaidKafkaEvent kafkaEvent =
         new OrderPaidKafkaEvent(
             order.getOrderReference(),
@@ -421,6 +404,30 @@ public class OrderProcessingService {
             breakdowns,
             Instant.now());
     orderPaymentEventPublisher.publishOrderPaid(kafkaEvent);
+  }
+
+  private List<StoreOrderBreakdown> computeStoreBreakdowns(List<OrderItem> items) {
+    if (items == null || items.isEmpty()) {
+      return Collections.emptyList();
+    }
+    Map<Long, BigDecimal> storeAmounts = new LinkedHashMap<>();
+    Map<Long, String> storeNames = new LinkedHashMap<>();
+    for (OrderItem item : items) {
+      Long storeId = item.getStoreId();
+      if (storeId == null) {
+        continue;
+      }
+      BigDecimal itemTotal = Objects.requireNonNullElse(item.getTotalPrice(), BigDecimal.ZERO);
+      storeAmounts.merge(storeId, itemTotal, BigDecimal::add);
+      if (item.getStoreName() != null) {
+        storeNames.putIfAbsent(storeId, item.getStoreName());
+      }
+    }
+    List<StoreOrderBreakdown> breakdowns = new ArrayList<>();
+    storeAmounts.forEach(
+        (storeId, amount) ->
+            breakdowns.add(new StoreOrderBreakdown(storeId, storeNames.get(storeId), amount)));
+    return breakdowns;
   }
 
   private record ReservedItem(Long storeId, Long productId, int quantity) {}
