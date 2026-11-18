@@ -12,6 +12,8 @@ import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.dto.CreateOrderItemRequest;
 import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
+import fr.miage.collectivit.salesservice.dto.event.OrderPaidKafkaEvent;
+import fr.miage.collectivit.salesservice.event.OrderPaymentEventPublisher;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
 import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.model.OrderItem;
@@ -38,13 +40,15 @@ class OrderProcessingServiceTest {
   @Mock private OrderRepository orderRepository;
   @Mock private StoreClient storeClient;
   @Mock private ApplicationEventPublisher applicationEventPublisher;
+  @Mock private OrderPaymentEventPublisher orderPaymentEventPublisher;
 
   private OrderProcessingService orderProcessingService;
 
   @BeforeEach
   void setUp() {
     orderProcessingService =
-        new OrderProcessingService(orderRepository, storeClient, applicationEventPublisher);
+        new OrderProcessingService(
+            orderRepository, storeClient, applicationEventPublisher, orderPaymentEventPublisher);
   }
 
   @Test
@@ -209,6 +213,79 @@ class OrderProcessingServiceTest {
 
     assertThat(response.status()).isEqualTo("PAID");
     verify(orderRepository).save(order);
+  }
+
+  @Test
+  @DisplayName(
+      "Should publish Kafka order paid event with store breakdowns when status changes to PAID (SLE-220)")
+  void shouldPublishKafkaOrderPaidEventWhenStatusChangesToPaid() {
+    OrderItem item1 =
+        OrderItem.builder()
+            .storeId(10L)
+            .storeName("Boulangerie")
+            .productId(1L)
+            .productName("Pain")
+            .quantity(2)
+            .unitPrice(new BigDecimal("1.50"))
+            .totalPrice(new BigDecimal("3.00"))
+            .build();
+    OrderItem item2 =
+        OrderItem.builder()
+            .storeId(20L)
+            .storeName("Boucherie")
+            .productId(2L)
+            .productName("Steak")
+            .quantity(1)
+            .unitPrice(new BigDecimal("12.00"))
+            .totalPrice(new BigDecimal("12.00"))
+            .build();
+    OrderItem item3 =
+        OrderItem.builder()
+            .storeId(10L)
+            .storeName("Boulangerie")
+            .productId(3L)
+            .productName("Croissant")
+            .quantity(2)
+            .unitPrice(new BigDecimal("1.00"))
+            .totalPrice(new BigDecimal("2.00"))
+            .build();
+
+    Order order =
+        Order.builder()
+            .orderReference("CMD-CC-PAID-001")
+            .customerId("user-777")
+            .clientCode("k7P9xQ2")
+            .status(OrderStatus.PENDING_PAYMENT)
+            .totalAmount(new BigDecimal("17.00"))
+            .currency("EUR")
+            .items(new ArrayList<>(List.of(item1, item2, item3)))
+            .build();
+
+    when(orderRepository.findByOrderReference("CMD-CC-PAID-001")).thenReturn(Optional.of(order));
+    when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+    orderProcessingService.updateOrderStatus("CMD-CC-PAID-001", "PAID");
+
+    ArgumentCaptor<OrderPaidKafkaEvent> captor = ArgumentCaptor.forClass(OrderPaidKafkaEvent.class);
+    verify(orderPaymentEventPublisher).publishOrderPaid(captor.capture());
+
+    OrderPaidKafkaEvent captured = captor.getValue();
+    assertThat(captured.orderReference()).isEqualTo("CMD-CC-PAID-001");
+    assertThat(captured.customerId()).isEqualTo("user-777");
+    assertThat(captured.clientCode()).isEqualTo("k7P9xQ2");
+    assertThat(captured.totalAmount()).isEqualByComparingTo(new BigDecimal("17.00"));
+    assertThat(captured.currency()).isEqualTo("EUR");
+    assertThat(captured.stores()).hasSize(2);
+
+    var store10 =
+        captured.stores().stream().filter(s -> s.storeId().equals(10L)).findFirst().orElseThrow();
+    assertThat(store10.storeName()).isEqualTo("Boulangerie");
+    assertThat(store10.amount()).isEqualByComparingTo(new BigDecimal("5.00"));
+
+    var store20 =
+        captured.stores().stream().filter(s -> s.storeId().equals(20L)).findFirst().orElseThrow();
+    assertThat(store20.storeName()).isEqualTo("Boucherie");
+    assertThat(store20.amount()).isEqualByComparingTo(new BigDecimal("12.00"));
   }
 
   @Test

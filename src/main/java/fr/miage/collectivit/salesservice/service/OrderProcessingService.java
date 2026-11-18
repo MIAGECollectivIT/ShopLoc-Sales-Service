@@ -6,6 +6,9 @@ import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderItemResponse;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
+import fr.miage.collectivit.salesservice.dto.event.OrderPaidKafkaEvent;
+import fr.miage.collectivit.salesservice.dto.event.StoreOrderBreakdown;
+import fr.miage.collectivit.salesservice.event.OrderPaymentEventPublisher;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
 import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.model.OrderItem;
@@ -55,6 +58,7 @@ public class OrderProcessingService {
   private final OrderRepository orderRepository;
   private final StoreClient storeClient;
   private final ApplicationEventPublisher applicationEventPublisher;
+  private final OrderPaymentEventPublisher orderPaymentEventPublisher;
 
   @Transactional
   public OrderResponse createOrder(
@@ -215,6 +219,7 @@ public class OrderProcessingService {
 
     if (status == OrderStatus.PAID) {
       applicationEventPublisher.publishEvent(new OrderPaidEvent(updated.getOrderReference()));
+      publishKafkaOrderPaidEvent(updated);
     }
 
     if (log.isInfoEnabled()) {
@@ -380,6 +385,42 @@ public class OrderProcessingService {
     String randomSuffix =
         UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
     return "CMD-CC-" + datePart + "-" + randomSuffix;
+  }
+
+  private void publishKafkaOrderPaidEvent(Order order) {
+    if (orderPaymentEventPublisher == null) {
+      return;
+    }
+    Map<Long, BigDecimal> storeAmounts = new LinkedHashMap<>();
+    Map<Long, String> storeNames = new LinkedHashMap<>();
+    if (order.getItems() != null) {
+      for (OrderItem item : order.getItems()) {
+        if (item.getStoreId() != null) {
+          BigDecimal current = storeAmounts.getOrDefault(item.getStoreId(), BigDecimal.ZERO);
+          BigDecimal itemTotal =
+              item.getTotalPrice() != null ? item.getTotalPrice() : BigDecimal.ZERO;
+          storeAmounts.put(item.getStoreId(), current.add(itemTotal));
+          if (item.getStoreName() != null && !storeNames.containsKey(item.getStoreId())) {
+            storeNames.put(item.getStoreId(), item.getStoreName());
+          }
+        }
+      }
+    }
+    List<StoreOrderBreakdown> breakdowns = new ArrayList<>();
+    storeAmounts.forEach(
+        (storeId, amount) ->
+            breakdowns.add(new StoreOrderBreakdown(storeId, storeNames.get(storeId), amount)));
+
+    OrderPaidKafkaEvent kafkaEvent =
+        new OrderPaidKafkaEvent(
+            order.getOrderReference(),
+            order.getCustomerId(),
+            order.getClientCode(),
+            order.getTotalAmount(),
+            order.getCurrency(),
+            breakdowns,
+            Instant.now());
+    orderPaymentEventPublisher.publishOrderPaid(kafkaEvent);
   }
 
   private record ReservedItem(Long storeId, Long productId, int quantity) {}
