@@ -5,8 +5,11 @@ import fr.miage.collectivit.salesservice.exception.StoreServiceUnavailableExcept
 import fr.miage.collectivit.salesservice.security.ServiceTokenProvider;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,6 +91,50 @@ public class StoreClient {
             productId,
             ex.getMessage());
       }
+      return Optional.empty();
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public Set<Long> getMerchantStoreIds(String rawBearerToken) {
+    if (rawBearerToken == null || rawBearerToken.isBlank()) {
+      return Set.of();
+    }
+    try {
+      List<Map<String, Object>> stores =
+          restClient
+              .get()
+              .uri("/v1/stores/me")
+              .header(HttpHeaders.AUTHORIZATION, "Bearer " + rawBearerToken.trim())
+              .retrieve()
+              .body(List.class);
+      if (stores == null || stores.isEmpty()) {
+        return Set.of();
+      }
+      Set<Long> storeIds = new HashSet<>();
+      for (Map<String, Object> store : stores) {
+        extractStoreId(store).ifPresent(storeIds::add);
+      }
+      return storeIds;
+    } catch (RestClientException ex) {
+      if (log.isWarnEnabled()) {
+        log.warn("Failed to fetch merchant store IDs from Store Service: {}", ex.getMessage());
+      }
+      return Set.of();
+    }
+  }
+
+  private Optional<Long> extractStoreId(Map<String, Object> store) {
+    Object idObj = store != null ? store.get("id") : null;
+    if (idObj instanceof Number num) {
+      return Optional.of(num.longValue());
+    }
+    if (idObj == null) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(Long.parseLong(idObj.toString()));
+    } catch (NumberFormatException ignored) {
       return Optional.empty();
     }
   }

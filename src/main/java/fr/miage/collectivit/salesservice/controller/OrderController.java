@@ -71,8 +71,10 @@ public class OrderController {
       @Valid @RequestBody CreateOrderRequest requestDto, HttpServletRequest request) {
     String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
     String userEmail = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_EMAIL);
+    String clientCode = (String) request.getAttribute(JwtAuthInterceptor.ATTR_CLIENT_CODE);
 
-    OrderResponse response = orderProcessingService.createOrder(requestDto, userId, userEmail);
+    OrderResponse response =
+        orderProcessingService.createOrder(requestDto, userId, userEmail, clientCode);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
@@ -113,9 +115,10 @@ public class OrderController {
       @PathVariable String reference, HttpServletRequest request) {
     String role = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
     String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+    String rawToken = (String) request.getAttribute(JwtAuthInterceptor.ATTR_RAW_TOKEN);
 
     OrderResponse order = orderProcessingService.getOrderByReference(reference);
-    verifyOrderReadAccess(order, role, userId);
+    verifyOrderReadAccess(order, role, userId, rawToken);
     return ResponseEntity.ok(order);
   }
 
@@ -141,13 +144,14 @@ public class OrderController {
       HttpServletRequest request) {
     String role = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
     String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+    String rawToken = (String) request.getAttribute(JwtAuthInterceptor.ATTR_RAW_TOKEN);
     OrderResponse existingOrder = orderProcessingService.getOrderByReference(reference);
-    verifyOrderReadAccess(existingOrder, role, userId);
+    verifyOrderReadAccess(existingOrder, role, userId, rawToken);
 
     if (UserRole.CLIENT.name().equalsIgnoreCase(role)) {
+      boolean isPaidTransition = OrderStatus.PAID.name().equalsIgnoreCase(requestDto.status());
       boolean isAllowedStatus =
-          OrderStatus.PAID.name().equalsIgnoreCase(requestDto.status())
-              || OrderStatus.CANCELLED.name().equalsIgnoreCase(requestDto.status());
+          isPaidTransition || OrderStatus.CANCELLED.name().equalsIgnoreCase(requestDto.status());
       if (!isAllowedStatus) {
         throw new ForbiddenException(
             "Access denied: clients are only permitted to pay or cancel their own pending orders");
@@ -155,6 +159,9 @@ public class OrderController {
       if (!OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(existingOrder.status())) {
         throw new ForbiddenException(
             "Access denied: clients can only cancel orders in PENDING_PAYMENT status");
+      }
+      if (isPaidTransition) {
+        orderProcessingService.verifyOrderPaymentSettled(existingOrder.orderReference());
       }
     }
 
@@ -250,9 +257,14 @@ public class OrderController {
         "Accès refusé : vous ne pouvez télécharger la preuve d'achat que pour vos propres commandes");
   }
 
-  private void verifyOrderReadAccess(OrderResponse order, String role, String userId) {
-    if (UserRole.ADMIN.name().equalsIgnoreCase(role)
-        || UserRole.MERCHANT.name().equalsIgnoreCase(role)) {
+  private void verifyOrderReadAccess(
+      OrderResponse order, String role, String userId, String rawToken) {
+    if (UserRole.ADMIN.name().equalsIgnoreCase(role)) {
+      return;
+    }
+
+    if (UserRole.MERCHANT.name().equalsIgnoreCase(role)) {
+      orderProcessingService.verifyMerchantOwnsOrderStore(order, rawToken);
       return;
     }
 

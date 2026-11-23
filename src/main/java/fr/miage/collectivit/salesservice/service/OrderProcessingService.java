@@ -8,12 +8,16 @@ import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
 import fr.miage.collectivit.salesservice.dto.event.OrderPaidKafkaEvent;
 import fr.miage.collectivit.salesservice.dto.event.StoreOrderBreakdown;
-import fr.miage.collectivit.salesservice.event.OrderPaymentEventPublisher;
+import fr.miage.collectivit.salesservice.exception.ForbiddenException;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
+import fr.miage.collectivit.salesservice.exception.StoreServiceUnavailableException;
 import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.model.OrderItem;
 import fr.miage.collectivit.salesservice.model.OrderStatus;
+import fr.miage.collectivit.salesservice.model.WalletTransactionType;
 import fr.miage.collectivit.salesservice.repository.OrderRepository;
+import fr.miage.collectivit.salesservice.repository.PaymentTransactionRepository;
+import fr.miage.collectivit.salesservice.repository.WalletTransactionRepository;
 import fr.miage.collectivit.salesservice.security.UserRole;
 import fr.miage.collectivit.salesservice.service.receipt.OrderPaidEvent;
 import java.math.BigDecimal;
@@ -30,6 +34,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,11 +65,21 @@ public class OrderProcessingService {
   private final OrderRepository orderRepository;
   private final StoreClient storeClient;
   private final ApplicationEventPublisher applicationEventPublisher;
-  private final OrderPaymentEventPublisher orderPaymentEventPublisher;
+  private final PaymentTransactionRepository paymentTransactionRepository;
+  private final WalletTransactionRepository walletTransactionRepository;
 
   @Transactional
   public OrderResponse createOrder(
       CreateOrderRequest request, String customerId, String customerEmail) {
+    return createOrder(request, customerId, customerEmail, null);
+  }
+
+  @Transactional
+  public OrderResponse createOrder(
+      CreateOrderRequest request,
+      String customerId,
+      String customerEmail,
+      String authenticatedClientCode) {
     if (request.items() == null || request.items().isEmpty()) {
       throw new IllegalArgumentException("Order must contain at least one item");
     }
@@ -76,6 +91,10 @@ public class OrderProcessingService {
         (customerEmail != null && !customerEmail.isBlank())
             ? customerEmail
             : request.customerEmail();
+    String effectiveClientCode =
+        (authenticatedClientCode != null && !authenticatedClientCode.isBlank())
+            ? authenticatedClientCode.trim()
+            : null;
 
     Instant now = Instant.now();
     Instant expiresAt = now.plus(DEFAULT_LOCK_DURATION);
@@ -89,7 +108,7 @@ public class OrderProcessingService {
             .orderReference(orderReference)
             .customerId(customerId)
             .customerEmail(effectiveEmail)
-            .clientCode(request.clientCode())
+            .clientCode(effectiveClientCode)
             .currency("EUR")
             .status(OrderStatus.PENDING_PAYMENT)
             .expiresAt(expiresAt)
@@ -163,11 +182,53 @@ public class OrderProcessingService {
     if (byRef.isPresent()) {
       return byRef;
     }
-    try {
-      Long id = Long.parseLong(trimmed);
-      return orderRepository.findById(id);
-    } catch (NumberFormatException ignored) {
-      return Optional.empty();
+    return Optional.empty();
+  }
+
+  @Transactional(readOnly = true)
+  public void verifyOrderPaymentSettled(String orderReference) {
+    Order order =
+        resolveOrder(orderReference)
+            .orElseThrow(
+                () ->
+                    new OrderNotFoundException(
+                        "Order with identifier " + orderReference + " not found"));
+
+    BigDecimal approvedCardAmount =
+        Objects.requireNonNullElse(
+            paymentTransactionRepository.sumApprovedAmountByReference(order.getOrderReference()),
+            BigDecimal.ZERO);
+    BigDecimal walletDebitedAmount =
+        Objects.requireNonNullElse(
+            walletTransactionRepository.sumAmountByOrderReferenceAndType(
+                order.getOrderReference(), WalletTransactionType.DEBIT),
+            BigDecimal.ZERO);
+    BigDecimal totalSettled = approvedCardAmount.add(walletDebitedAmount);
+
+    if (order.getTotalAmount() == null || totalSettled.compareTo(order.getTotalAmount()) < 0) {
+      throw new ForbiddenException(
+          "Payment proof required: settled amount does not cover the order total");
+    }
+  }
+
+  public void verifyMerchantOwnsOrderStore(OrderResponse order, String rawBearerToken) {
+    Set<Long> merchantStoreIds = storeClient.getMerchantStoreIds(rawBearerToken);
+    if (merchantStoreIds.isEmpty()) {
+      throw new ForbiddenException(
+          "Access denied: unable to verify merchant store ownership for this order");
+    }
+    boolean ownsAnyStore =
+        order.storeSummaries() != null
+            && order.storeSummaries().stream()
+                .anyMatch(s -> s.storeId() != null && merchantStoreIds.contains(s.storeId()));
+    if (!ownsAnyStore && order.items() != null) {
+      ownsAnyStore =
+          order.items().stream()
+              .anyMatch(i -> i.storeId() != null && merchantStoreIds.contains(i.storeId()));
+    }
+    if (!ownsAnyStore) {
+      throw new ForbiddenException(
+          "Access denied: merchants can only access orders containing their own stores");
     }
   }
 
@@ -220,8 +281,9 @@ public class OrderProcessingService {
     Order updated = orderRepository.save(order);
 
     if (status == OrderStatus.PAID) {
-      applicationEventPublisher.publishEvent(new OrderPaidEvent(updated.getOrderReference()));
-      publishKafkaOrderPaidEvent(updated);
+      OrderPaidKafkaEvent kafkaEvent = buildKafkaOrderPaidEvent(updated);
+      applicationEventPublisher.publishEvent(
+          new OrderPaidEvent(updated.getOrderReference(), kafkaEvent));
     }
 
     if (log.isInfoEnabled()) {
@@ -369,7 +431,14 @@ public class OrderProcessingService {
       }
       Optional<BigDecimal> verifiedPrice =
           storeClient.getProductPrice(item.storeId(), item.productId());
-      if (verifiedPrice.isPresent() && verifiedPrice.get().compareTo(item.unitPrice()) != 0) {
+      if (verifiedPrice.isEmpty()) {
+        throw new StoreServiceUnavailableException(
+            "Unable to verify price for product #"
+                + item.productId()
+                + " in store #"
+                + item.storeId());
+      }
+      if (verifiedPrice.get().compareTo(item.unitPrice()) != 0) {
         throw new IllegalArgumentException(
             "Price mismatch for product #"
                 + item.productId()
@@ -389,21 +458,16 @@ public class OrderProcessingService {
     return "CMD-CC-" + datePart + "-" + randomSuffix;
   }
 
-  private void publishKafkaOrderPaidEvent(Order order) {
-    if (orderPaymentEventPublisher == null) {
-      return;
-    }
+  private OrderPaidKafkaEvent buildKafkaOrderPaidEvent(Order order) {
     List<StoreOrderBreakdown> breakdowns = computeStoreBreakdowns(order.getItems());
-    OrderPaidKafkaEvent kafkaEvent =
-        new OrderPaidKafkaEvent(
-            order.getOrderReference(),
-            order.getCustomerId(),
-            order.getClientCode(),
-            order.getTotalAmount(),
-            order.getCurrency(),
-            breakdowns,
-            Instant.now());
-    orderPaymentEventPublisher.publishOrderPaid(kafkaEvent);
+    return new OrderPaidKafkaEvent(
+        order.getOrderReference(),
+        order.getCustomerId(),
+        order.getClientCode(),
+        order.getTotalAmount(),
+        order.getCurrency(),
+        breakdowns,
+        Instant.now());
   }
 
   private List<StoreOrderBreakdown> computeStoreBreakdowns(List<OrderItem> items) {
@@ -425,8 +489,11 @@ public class OrderProcessingService {
     }
     List<StoreOrderBreakdown> breakdowns = new ArrayList<>();
     storeAmounts.forEach(
-        (storeId, amount) ->
-            breakdowns.add(new StoreOrderBreakdown(storeId, storeNames.get(storeId), amount)));
+        (storeId, amount) -> {
+          if (amount.compareTo(BigDecimal.ZERO) > 0) {
+            breakdowns.add(new StoreOrderBreakdown(storeId, storeNames.get(storeId), amount));
+          }
+        });
     return breakdowns;
   }
 

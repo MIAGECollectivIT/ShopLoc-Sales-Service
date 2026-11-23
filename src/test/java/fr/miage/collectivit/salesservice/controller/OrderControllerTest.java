@@ -95,7 +95,7 @@ class OrderControllerTest {
             List.of(storeSummary),
             List.of(itemResp));
 
-    when(orderProcessingService.createOrder(any(), any(), any())).thenReturn(response);
+    when(orderProcessingService.createOrder(any(), any(), any(), any())).thenReturn(response);
 
     mockMvc
         .perform(
