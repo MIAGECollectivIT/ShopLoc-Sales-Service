@@ -29,6 +29,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@SuppressWarnings("PMD.TooManyFields")
 public class WalletTransaction {
 
   @Id

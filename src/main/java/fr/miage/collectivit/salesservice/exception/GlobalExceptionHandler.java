@@ -35,6 +35,7 @@ public class GlobalExceptionHandler {
     return ResponseEntity.badRequest().body(body);
   }
 
+  @SuppressWarnings("PMD.LawOfDemeter")
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   public ResponseEntity<Map<String, Object>> handleTypeMismatch(
       MethodArgumentTypeMismatchException ex) {
