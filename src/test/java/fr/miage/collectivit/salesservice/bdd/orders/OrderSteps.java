@@ -64,8 +64,17 @@ public class OrderSteps extends AbstractScenario {
         .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/stock")))
         .andRespond(withSuccess("{\"status\":\"OK\"}", MediaType.APPLICATION_JSON));
     mockStoreServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/v1/stores/me")))
+        .andRespond(withSuccess("[{\"id\":1,\"name\":\"Store 1\"}]", MediaType.APPLICATION_JSON));
+    mockStoreServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/101")))
+        .andRespond(withSuccess("{\"id\":101,\"price\":1.35}", MediaType.APPLICATION_JSON));
+    mockStoreServer
+        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/201")))
+        .andRespond(withSuccess("{\"id\":201,\"price\":22.00}", MediaType.APPLICATION_JSON));
+    mockStoreServer
         .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/")))
-        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        .andRespond(withSuccess("{\"id\":99,\"price\":10.00}", MediaType.APPLICATION_JSON));
     storeClient.setRestClient(builder.build());
   }
 
@@ -130,7 +139,7 @@ public class OrderSteps extends AbstractScenario {
                 .body("{\"error\":\"Insufficient Stock\"}"));
     mockStoreServer
         .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/")))
-        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        .andRespond(withSuccess("{\"id\":99,\"price\":10.00}", MediaType.APPLICATION_JSON));
     storeClient.setRestClient(builder.build());
   }
 

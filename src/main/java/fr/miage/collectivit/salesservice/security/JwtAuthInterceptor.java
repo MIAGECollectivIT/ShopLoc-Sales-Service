@@ -26,6 +26,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
   public static final String ATTR_USER_DB_ID = "authenticatedUserDbId";
   public static final String ATTR_USER_EMAIL = "authenticatedUserEmail";
   public static final String ATTR_USER_ROLE = "authenticatedUserRole";
+  public static final String ATTR_CLIENT_CODE = "authenticatedClientCode";
   public static final String ATTR_CLAIMS = "jwtClaims";
   public static final String ATTR_RAW_TOKEN = "rawJwtToken";
 
@@ -131,6 +132,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     }
     request.setAttribute(ATTR_USER_EMAIL, claims.get("email", String.class));
     request.setAttribute(ATTR_USER_ROLE, userRole);
+    request.setAttribute(ATTR_CLIENT_CODE, claims.get("clientCode", String.class));
     request.setAttribute(ATTR_CLAIMS, claims);
     request.setAttribute(ATTR_RAW_TOKEN, token);
   }
