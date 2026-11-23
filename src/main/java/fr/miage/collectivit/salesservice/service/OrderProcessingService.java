@@ -194,10 +194,20 @@ public class OrderProcessingService {
                     new OrderNotFoundException(
                         "Order with identifier " + orderReference + " not found"));
 
+    List<String> orderIdentifiers = new ArrayList<>();
+    if (order.getOrderReference() != null && !order.getOrderReference().isBlank()) {
+      orderIdentifiers.add(order.getOrderReference());
+    }
+    if (order.getUid() != null) {
+      orderIdentifiers.add(order.getUid().toString());
+    }
+
     BigDecimal approvedCardAmount =
-        Objects.requireNonNullElse(
-            paymentTransactionRepository.sumApprovedAmountByReference(order.getOrderReference()),
-            BigDecimal.ZERO);
+        orderIdentifiers.isEmpty()
+            ? BigDecimal.ZERO
+            : Objects.requireNonNullElse(
+                paymentTransactionRepository.sumApprovedAmountByReferences(orderIdentifiers),
+                BigDecimal.ZERO);
     BigDecimal walletDebitedAmount =
         Objects.requireNonNullElse(
             walletTransactionRepository.sumAmountByOrderReferenceAndType(
