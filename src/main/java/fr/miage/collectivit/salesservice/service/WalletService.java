@@ -63,6 +63,7 @@ public class WalletService {
               try {
                 return walletRepository.save(
                     Wallet.builder()
+                        .uid(UUID.randomUUID())
                         .userId(trimmedUserId)
                         .balance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
                         .currency(DEFAULT_CURRENCY)
@@ -188,6 +189,7 @@ public class WalletService {
                 .toUpperCase(Locale.ROOT);
     WalletTransaction tx =
         WalletTransaction.builder()
+            .uid(UUID.randomUUID())
             .wallet(savedWallet)
             .userId(trimmedUserId)
             .transactionReference(txRef)
@@ -289,13 +291,14 @@ public class WalletService {
 
     WalletTransaction tx =
         WalletTransaction.builder()
+            .uid(UUID.randomUUID())
             .wallet(savedWallet)
             .userId(userId.trim())
             .transactionReference(txRef)
             .amount(amount)
             .type(WalletTransactionType.DEBIT)
             .status("SUCCESS")
-            .storeId(request.storeId())
+            .storeUid(request.storeUid())
             .storeName(request.storeName())
             .orderReference(request.orderReference())
             .description(description)

@@ -3,6 +3,7 @@ package fr.miage.collectivit.salesservice.client;
 import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
 import fr.miage.collectivit.salesservice.security.ServiceTokenProvider;
 import java.time.Duration;
+import java.util.UUID;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,11 +44,11 @@ public class LoyaltyRateClient {
     this.restClient = restClient;
   }
 
-  public MerchantLoyaltyRateDto getStoreLoyaltyRate(Long storeId) {
+  public MerchantLoyaltyRateDto getStoreLoyaltyRate(UUID storeUid) {
     String token =
         serviceTokenProvider != null ? serviceTokenProvider.generateServiceToken() : null;
     try {
-      var requestBuilder = restClient.get().uri("/v1/loyalty/merchants/{storeId}/rates", storeId);
+      var requestBuilder = restClient.get().uri("/v1/loyalty/merchants/{storeUid}/rates", storeUid);
       if (token != null && !token.isBlank()) {
         requestBuilder.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
       }
@@ -60,7 +61,7 @@ public class LoyaltyRateClient {
                     if (log.isDebugEnabled()) {
                       log.debug(
                           "Custom loyalty rate not found for store {} (status {}), using default",
-                          storeId,
+                          storeUid,
                           response.getStatusCode());
                     }
                   })
@@ -73,10 +74,10 @@ public class LoyaltyRateClient {
       if (log.isWarnEnabled()) {
         log.warn(
             "Unable to query loyalty rates for store {} from Loyalty Service: {}. Falling back to default rate.",
-            storeId,
+            storeUid,
             ex.getMessage());
       }
     }
-    return MerchantLoyaltyRateDto.defaultForStore(storeId);
+    return MerchantLoyaltyRateDto.defaultForStore(storeUid);
   }
 }

@@ -63,7 +63,7 @@ public class PhysicalSaleService {
   @Transactional
   @SuppressWarnings("PMD.LawOfDemeter")
   public PhysicalSaleResponse recordPhysicalSale(PhysicalSaleRequest request, String callerUserId) {
-    MerchantLoyaltyRateDto loyaltyRate = loyaltyRateClient.getStoreLoyaltyRate(request.storeId());
+    MerchantLoyaltyRateDto loyaltyRate = loyaltyRateClient.getStoreLoyaltyRate(request.storeUid());
 
     BigDecimal normalizedAmount = request.amount().setScale(2, RoundingMode.HALF_UP);
     BigDecimal pointsEarned = calculatePoints(normalizedAmount, loyaltyRate);
@@ -85,8 +85,9 @@ public class PhysicalSaleService {
 
     PhysicalSaleTransaction transaction =
         PhysicalSaleTransaction.builder()
+            .uid(UUID.randomUUID())
             .transactionReference(transactionReference)
-            .storeId(request.storeId())
+            .storeUid(request.storeUid())
             .merchantId(effectiveMerchantId)
             .clientCode(request.clientCode().trim().toUpperCase(Locale.ROOT))
             .customerId(hasText(request.customerId()) ? request.customerId().trim() : null)
@@ -104,9 +105,9 @@ public class PhysicalSaleService {
 
     if (log.isInfoEnabled()) {
       log.info(
-          "Physical in-store sale recorded: reference={}, storeId={}, clientCode={}, amount={} {}, pointsEarned={} ({})",
+          "Physical in-store sale recorded: reference={}, storeUid={}, clientCode={}, amount={} {}, pointsEarned={} ({})",
           saved.getTransactionReference(),
-          saved.getStoreId(),
+          saved.getStoreUid(),
           saved.getClientCode(),
           saved.getAmount(),
           saved.getCurrency(),
@@ -123,7 +124,7 @@ public class PhysicalSaleService {
       physicalPaymentEventPublisher.publishPhysicalPaymentCompleted(
           new PhysicalPaymentCompletedEvent(
               saved.getTransactionReference(),
-              saved.getStoreId(),
+              saved.getStoreUid(),
               saved.getClientCode(),
               saved.getCustomerId(),
               saved.getAmount(),
@@ -136,7 +137,7 @@ public class PhysicalSaleService {
       transactionEventPublisher.publishTransactionApproved(
           new TransactionApprovedKafkaEvent(
               saved.getCustomerId().trim(),
-              saved.getTransactionReference(),
+              saved.getUid().toString(),
               saved.getTransactionReference(),
               amountValue,
               saved.getCurrency(),

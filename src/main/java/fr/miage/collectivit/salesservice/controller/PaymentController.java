@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -98,20 +99,21 @@ public class PaymentController {
             description = "Forbidden - Caller cannot access another user's transactions")
       })
   public ResponseEntity<List<UserPaymentTransactionResponse>> getUserTransactions(
-      @PathVariable String userId,
+      @PathVariable UUID userId,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
       HttpServletRequest request) {
     String authenticatedRole = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
     String authenticatedUserId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+    String targetUserId = userId.toString();
 
     if (!UserRole.ADMIN.name().equalsIgnoreCase(authenticatedRole)
-        && (authenticatedUserId == null || !authenticatedUserId.equalsIgnoreCase(userId))) {
+        && (authenticatedUserId == null || !authenticatedUserId.equalsIgnoreCase(targetUserId))) {
       throw new ForbiddenException(
           "Access denied: you do not have permission to view transactions of another user");
     }
 
-    return ResponseEntity.ok(paymentService.getUserTransactions(userId, from, to));
+    return ResponseEntity.ok(paymentService.getUserTransactions(targetUserId, from, to));
   }
 
   private void verifyPaymentAccess(String reference, String role, String userId) {

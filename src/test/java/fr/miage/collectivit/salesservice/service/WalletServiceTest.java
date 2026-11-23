@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,8 @@ class WalletServiceTest {
   @InjectMocks private WalletService walletService;
 
   private static final String USER_ID = "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d";
+  private static final UUID WALLET_UID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+  private static final UUID STORE_UID = UUID.fromString("22222222-2222-2222-2222-222222222222");
   private Wallet wallet;
 
   @BeforeEach
@@ -51,6 +54,7 @@ class WalletServiceTest {
     wallet =
         Wallet.builder()
             .id(1L)
+            .uid(WALLET_UID)
             .userId(USER_ID)
             .balance(new BigDecimal("20.00"))
             .currency("EUR")
@@ -282,7 +286,11 @@ class WalletServiceTest {
 
     WalletDebitRequest debitRequest =
         new WalletDebitRequest(
-            new BigDecimal("12.50"), 1L, "Boulangerie Le Moulin Doré", "ORD-123", "Achat pain");
+            new BigDecimal("12.50"),
+            STORE_UID,
+            "Boulangerie Le Moulin Doré",
+            "ORD-123",
+            "Achat pain");
 
     WalletResponse response = walletService.debit(USER_ID, debitRequest);
 
@@ -297,7 +305,11 @@ class WalletServiceTest {
 
     WalletDebitRequest debitRequest =
         new WalletDebitRequest(
-            new BigDecimal("25.00"), 1L, "Boulangerie Le Moulin Doré", "ORD-123", "Achat pain");
+            new BigDecimal("25.00"),
+            STORE_UID,
+            "Boulangerie Le Moulin Doré",
+            "ORD-123",
+            "Achat pain");
 
     assertThatThrownBy(() -> walletService.debit(USER_ID, debitRequest))
         .isInstanceOf(InsufficientWalletBalanceException.class)
@@ -310,6 +322,7 @@ class WalletServiceTest {
     WalletTransaction tx1 =
         WalletTransaction.builder()
             .id(1L)
+            .uid(UUID.randomUUID())
             .userId(USER_ID)
             .transactionReference("WTX-001")
             .amount(new BigDecimal("20.00"))
@@ -322,11 +335,12 @@ class WalletServiceTest {
     WalletTransaction tx2 =
         WalletTransaction.builder()
             .id(2L)
+            .uid(UUID.randomUUID())
             .userId(USER_ID)
             .transactionReference("WTX-002")
             .amount(new BigDecimal("5.00"))
             .type(WalletTransactionType.DEBIT)
-            .storeId(1L)
+            .storeUid(STORE_UID)
             .storeName("Boulangerie Le Moulin Doré")
             .status("SUCCESS")
             .balanceAfter(new BigDecimal("15.00"))
@@ -339,6 +353,8 @@ class WalletServiceTest {
     List<WalletTransactionResponse> history = walletService.getTransactions(USER_ID);
 
     assertThat(history).hasSize(2);
+    assertThat(history.get(0).uid()).isEqualTo(tx2.getUid());
+    assertThat(history.get(0).storeUid()).isEqualTo(STORE_UID);
     assertThat(history.get(0).transactionReference()).isEqualTo("WTX-002");
     assertThat(history.get(0).storeName()).isEqualTo("Boulangerie Le Moulin Doré");
     assertThat(history.get(0).type()).isEqualTo(WalletTransactionType.DEBIT);

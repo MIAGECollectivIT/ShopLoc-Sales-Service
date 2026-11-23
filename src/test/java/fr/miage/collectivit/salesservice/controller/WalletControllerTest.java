@@ -21,6 +21,7 @@ import fr.miage.collectivit.salesservice.service.WalletService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,9 @@ class WalletControllerTest {
   private ObjectMapper objectMapper;
 
   private static final String USER_ID = "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d";
+  private static final UUID WALLET_UID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+  private static final UUID STORE_UID_1 = UUID.fromString("22222222-2222-2222-2222-222222222221");
+  private static final UUID STORE_UID_2 = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
   @BeforeEach
   void setUp() {
@@ -57,7 +61,7 @@ class WalletControllerTest {
   void shouldReturnWalletBalance() throws Exception {
     WalletResponse response =
         new WalletResponse(
-            1L, USER_ID, new BigDecimal("45.50"), "EUR", Instant.now(), Instant.now());
+            WALLET_UID, USER_ID, new BigDecimal("45.50"), "EUR", Instant.now(), Instant.now());
     when(walletService.getWallet(USER_ID)).thenReturn(response);
 
     mockMvc
@@ -67,9 +71,24 @@ class WalletControllerTest {
                 .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.CLIENT.name())
                 .contentType(MediaType.APPLICATION_JSON))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.uid").value(WALLET_UID.toString()))
         .andExpect(jsonPath("$.userId").value(USER_ID))
         .andExpect(jsonPath("$.balance").value(45.50))
         .andExpect(jsonPath("$.currency").value("EUR"));
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/wallet?userId=invalid - 400 Bad Request when userId is not a UUID")
+  void shouldReturn400WhenRequestedUserIdIsNotUuid() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/sales/wallet")
+                .param("userId", "123")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, USER_ID)
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.ADMIN.name())
+                .contentType(MediaType.APPLICATION_JSON))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400));
   }
 
   @Test
@@ -78,7 +97,7 @@ class WalletControllerTest {
     WalletReloadRequest request = new WalletReloadRequest(new BigDecimal("25.00"), "tok_visa");
     WalletResponse response =
         new WalletResponse(
-            1L, USER_ID, new BigDecimal("70.50"), "EUR", Instant.now(), Instant.now());
+            WALLET_UID, USER_ID, new BigDecimal("70.50"), "EUR", Instant.now(), Instant.now());
     when(walletService.reload(eq(USER_ID), any(WalletReloadRequest.class), any()))
         .thenReturn(response);
 
@@ -133,7 +152,7 @@ class WalletControllerTest {
   void shouldReturnTransactionHistory() throws Exception {
     WalletTransactionResponse tx1 =
         new WalletTransactionResponse(
-            1L,
+            UUID.randomUUID(),
             "WTX-001",
             new BigDecimal("20.00"),
             WalletTransactionType.TOPUP,
@@ -148,13 +167,13 @@ class WalletControllerTest {
 
     WalletTransactionResponse tx2 =
         new WalletTransactionResponse(
-            2L,
+            UUID.randomUUID(),
             "WTX-002",
             new BigDecimal("8.50"),
             WalletTransactionType.DEBIT,
             "SUCCESS",
             null,
-            1L,
+            STORE_UID_1,
             "Boulangerie Le Moulin Doré",
             "ORD-001",
             "Achat pain",
@@ -171,6 +190,7 @@ class WalletControllerTest {
                 .contentType(MediaType.APPLICATION_JSON))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.length()").value(2))
+        .andExpect(jsonPath("$[0].storeUid").value(STORE_UID_1.toString()))
         .andExpect(jsonPath("$[0].storeName").value("Boulangerie Le Moulin Doré"))
         .andExpect(jsonPath("$[0].type").value("DEBIT"))
         .andExpect(jsonPath("$[1].type").value("TOPUP"));
@@ -181,10 +201,14 @@ class WalletControllerTest {
   void shouldDebitWalletSuccessfully() throws Exception {
     WalletDebitRequest request =
         new WalletDebitRequest(
-            new BigDecimal("10.00"), 2L, "Boucherie des Halles", "ORD-002", "Achat viande");
+            new BigDecimal("10.00"),
+            STORE_UID_2,
+            "Boucherie des Halles",
+            "ORD-002",
+            "Achat viande");
     WalletResponse response =
         new WalletResponse(
-            1L, USER_ID, new BigDecimal("35.50"), "EUR", Instant.now(), Instant.now());
+            WALLET_UID, USER_ID, new BigDecimal("35.50"), "EUR", Instant.now(), Instant.now());
 
     when(walletService.debit(eq(USER_ID), any(WalletDebitRequest.class))).thenReturn(response);
 

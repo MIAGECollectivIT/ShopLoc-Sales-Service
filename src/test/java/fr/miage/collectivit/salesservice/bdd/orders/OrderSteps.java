@@ -25,6 +25,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.hamcrest.Matchers;
 import org.springframework.http.MediaType;
@@ -42,6 +43,13 @@ public class OrderSteps extends AbstractScenario {
   private static final String ORDERS_ENDPOINT = "/v1/sales/orders";
   private static final String HEADER_AUTHORIZATION = "Authorization";
   private static final String BEARER_PREFIX = "Bearer ";
+  private static final UUID STORE_1_UID = UUID.fromString("11111111-1111-1111-1111-111111111001");
+  private static final UUID PRODUCT_101_UID =
+      UUID.fromString("22222222-2222-2222-2222-222222222101");
+  private static final UUID PRODUCT_201_UID =
+      UUID.fromString("22222222-2222-2222-2222-222222222201");
+  private static final UUID PRODUCT_10_UID =
+      UUID.fromString("22222222-2222-2222-2222-222222222010");
 
   private final WebApplicationContext webApplicationContext;
   private final ScenarioContext scenarioContext;
@@ -65,30 +73,55 @@ public class OrderSteps extends AbstractScenario {
         .andRespond(withSuccess("{\"status\":\"OK\"}", MediaType.APPLICATION_JSON));
     mockStoreServer
         .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/v1/stores/me")))
-        .andRespond(withSuccess("[{\"id\":1,\"name\":\"Store 1\"}]", MediaType.APPLICATION_JSON));
+        .andRespond(
+            withSuccess(
+                "[{\"uid\":\"" + STORE_1_UID + "\",\"name\":\"Store 1\"}]",
+                MediaType.APPLICATION_JSON));
     mockStoreServer
-        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/101")))
-        .andRespond(withSuccess("{\"id\":101,\"price\":1.35}", MediaType.APPLICATION_JSON));
+        .expect(
+            ExpectedCount.manyTimes(),
+            requestTo(Matchers.containsString("/products/" + PRODUCT_101_UID)))
+        .andRespond(
+            withSuccess(
+                "{\"uid\":\"" + PRODUCT_101_UID + "\",\"price\":1.35}",
+                MediaType.APPLICATION_JSON));
     mockStoreServer
-        .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/201")))
-        .andRespond(withSuccess("{\"id\":201,\"price\":22.00}", MediaType.APPLICATION_JSON));
+        .expect(
+            ExpectedCount.manyTimes(),
+            requestTo(Matchers.containsString("/products/" + PRODUCT_201_UID)))
+        .andRespond(
+            withSuccess(
+                "{\"uid\":\"" + PRODUCT_201_UID + "\",\"price\":22.00}",
+                MediaType.APPLICATION_JSON));
     mockStoreServer
         .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/")))
-        .andRespond(withSuccess("{\"id\":99,\"price\":10.00}", MediaType.APPLICATION_JSON));
+        .andRespond(withSuccess("{\"price\":10.00}", MediaType.APPLICATION_JSON));
     storeClient.setRestClient(builder.build());
   }
 
   @Given(
-      "a customer creates a multi-store order with {int} items from store {long} at {string} EUR and {int} item from store {long} at {string} EUR")
+      "a customer creates a multi-store order with {int} items from store {string} at {string} EUR and {int} item from store {string} at {string} EUR")
   public void givenCustomerCreatesMultiStoreOrder(
-      int qty1, Long storeId1, String price1, int qty2, Long storeId2, String price2)
+      int qty1, String storeUid1Str, String price1, int qty2, String storeUid2Str, String price2)
       throws Exception {
+    UUID storeUid1 = UUID.fromString(storeUid1Str);
+    UUID storeUid2 = UUID.fromString(storeUid2Str);
     CreateOrderItemRequest item1 =
         new CreateOrderItemRequest(
-            storeId1, "Store #" + storeId1, 101L, "Product Store 1", new BigDecimal(price1), qty1);
+            storeUid1,
+            "Store " + storeUid1,
+            PRODUCT_101_UID,
+            "Product Store 1",
+            new BigDecimal(price1),
+            qty1);
     CreateOrderItemRequest item2 =
         new CreateOrderItemRequest(
-            storeId2, "Store #" + storeId2, 201L, "Product Store 2", new BigDecimal(price2), qty2);
+            storeUid2,
+            "Store " + storeUid2,
+            PRODUCT_201_UID,
+            "Product Store 2",
+            new BigDecimal(price2),
+            qty2);
 
     CreateOrderRequest request =
         new CreateOrderRequest(List.of(item1, item2), "CLI-BDD-01", "bdd-customer@example.com");
@@ -123,8 +156,8 @@ public class OrderSteps extends AbstractScenario {
     scenarioContext.setLastResult(result);
   }
 
-  @Given("product {long} in store {long} has insufficient stock")
-  public void givenProductHasInsufficientStock(Long productId, Long storeId) {
+  @Given("product {string} in store {string} has insufficient stock")
+  public void givenProductHasInsufficientStock(String productUidStr, String storeUidStr) {
     RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8089");
     mockStoreServer = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
     mockStoreServer
@@ -132,26 +165,29 @@ public class OrderSteps extends AbstractScenario {
             ExpectedCount.manyTimes(),
             requestTo(
                 Matchers.containsString(
-                    "/stores/" + storeId + "/products/" + productId + "/stock")))
+                    "/stores/" + storeUidStr + "/products/" + productUidStr + "/stock")))
         .andRespond(
             withBadRequest()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"error\":\"Insufficient Stock\"}"));
     mockStoreServer
         .expect(ExpectedCount.manyTimes(), requestTo(Matchers.containsString("/products/")))
-        .andRespond(withSuccess("{\"id\":99,\"price\":10.00}", MediaType.APPLICATION_JSON));
+        .andRespond(withSuccess("{\"price\":10.00}", MediaType.APPLICATION_JSON));
     storeClient.setRestClient(builder.build());
   }
 
-  @When("an order is created with {int} item of product {long} from store {long} at {string} EUR")
+  @When(
+      "an order is created with {int} item of product {string} from store {string} at {string} EUR")
   public void whenOrderCreatedWithSingleItem(
-      int qty, Long productId, Long storeId, String unitPrice) throws Exception {
+      int qty, String productUidStr, String storeUidStr, String unitPrice) throws Exception {
+    UUID storeUid = UUID.fromString(storeUidStr);
+    UUID productUid = UUID.fromString(productUidStr);
     CreateOrderItemRequest item =
         new CreateOrderItemRequest(
-            storeId,
-            "Store #" + storeId,
-            productId,
-            "Product " + productId,
+            storeUid,
+            "Store " + storeUid,
+            productUid,
+            "Product " + productUid,
             new BigDecimal(unitPrice),
             qty);
 
@@ -191,9 +227,9 @@ public class OrderSteps extends AbstractScenario {
     OrderItem item =
         OrderItem.builder()
             .order(order)
-            .storeId(1L)
+            .storeUid(STORE_1_UID)
             .storeName("Store 1")
-            .productId(10L)
+            .productUid(PRODUCT_10_UID)
             .productName("Item")
             .unitPrice(new BigDecimal("15.00"))
             .quantity(1)

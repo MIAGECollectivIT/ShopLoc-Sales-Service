@@ -4,10 +4,14 @@ import fr.miage.collectivit.salesservice.model.Wallet;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Schema(description = "Citizen digital wallet balance response (SLE-17)")
 public record WalletResponse(
-    @Schema(description = "Wallet ID", example = "1") Long id,
+    @Schema(
+            description = "Wallet public UUID identifier",
+            example = "11111111-1111-1111-1111-111111111111")
+        UUID uid,
     @Schema(
             description = "User unique public identifier (UUID)",
             example = "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d")
@@ -23,13 +27,13 @@ public record WalletResponse(
         BigDecimal weeklyReloadRemaining) {
 
   public WalletResponse(
-      Long id,
+      UUID uid,
       String userId,
       BigDecimal balance,
       String currency,
       Instant createdAt,
       Instant updatedAt) {
-    this(id, userId, balance, currency, createdAt, updatedAt, null);
+    this(uid, userId, balance, currency, createdAt, updatedAt, null);
   }
 
   public static WalletResponse fromEntity(Wallet wallet) {
@@ -38,7 +42,7 @@ public record WalletResponse(
 
   public static WalletResponse fromEntity(Wallet wallet, BigDecimal weeklyReloadRemaining) {
     return new WalletResponse(
-        wallet.getId(),
+        wallet.getUid(),
         wallet.getUserId(),
         wallet.getBalance(),
         wallet.getCurrency(),

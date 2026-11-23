@@ -14,6 +14,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -28,11 +29,15 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@SuppressWarnings("PMD.TooManyFields")
 public class WalletTransaction {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  @Column(name = "uid", nullable = false, unique = true, updatable = false)
+  private UUID uid;
 
   @ManyToOne(fetch = FetchType.LAZY, optional = false)
   @JoinColumn(name = "wallet_id", nullable = false)
@@ -60,8 +65,8 @@ public class WalletTransaction {
   @Column(name = "idempotency_key", length = 128)
   private String idempotencyKey;
 
-  @Column(name = "store_id")
-  private Long storeId;
+  @Column(name = "store_uid")
+  private UUID storeUid;
 
   @Column(name = "store_name", length = 255)
   private String storeName;
@@ -80,6 +85,9 @@ public class WalletTransaction {
 
   @PrePersist
   public void prePersist() {
+    if (this.uid == null) {
+      this.uid = UUID.randomUUID();
+    }
     if (this.createdAt == null) {
       this.createdAt = Instant.now();
     }

@@ -60,24 +60,45 @@ class PaymentTransactionsExtractionTest {
         .compact();
   }
 
+  private static final String USER_1 = "11111111-1111-1111-1111-111111111101";
+  private static final String USER_2 = "11111111-1111-1111-1111-111111111102";
+  private static final String USER_42 = "11111111-1111-1111-1111-111111111142";
+  private static final String USER_99 = "11111111-1111-1111-1111-111111111199";
+  private static final String ADMIN_1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1";
+  private static final String OTHER_USER = "99999999-9999-9999-9999-999999999999";
+
   @Test
   @DisplayName("SLE-160: Missing Authorization header should return 401 Unauthorized")
   void testExtractTransactionsWithoutToken() throws Exception {
     mockMvc
         .perform(
-            get("/v1/sales/payments/users/USER-1/transactions")
+            get("/v1/sales/payments/users/" + USER_1 + "/transactions")
                 .param("from", Instant.now().minus(15, ChronoUnit.DAYS).toString())
                 .param("to", Instant.now().toString()))
         .andExpect(status().isUnauthorized());
   }
 
   @Test
-  @DisplayName("SLE-160: Client querying another user's transactions should return 403 Forbidden")
-  void testExtractTransactionsForbiddenForOtherUser() throws Exception {
-    String token = generateTestToken("USER-1", "CLIENT");
+  @DisplayName("SLE-160: Non-UUID userId should return 400 Bad Request")
+  void testExtractTransactionsNonUuidUserId() throws Exception {
+    String token = generateTestToken(USER_1, "CLIENT");
     mockMvc
         .perform(
-            get("/v1/sales/payments/users/USER-2/transactions")
+            get("/v1/sales/payments/users/not-a-uuid/transactions")
+                .header("Authorization", "Bearer " + token)
+                .param("from", Instant.now().minus(15, ChronoUnit.DAYS).toString())
+                .param("to", Instant.now().toString()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400));
+  }
+
+  @Test
+  @DisplayName("SLE-160: Client querying another user's transactions should return 403 Forbidden")
+  void testExtractTransactionsForbiddenForOtherUser() throws Exception {
+    String token = generateTestToken(USER_1, "CLIENT");
+    mockMvc
+        .perform(
+            get("/v1/sales/payments/users/" + USER_2 + "/transactions")
                 .header("Authorization", "Bearer " + token)
                 .param("from", Instant.now().minus(15, ChronoUnit.DAYS).toString())
                 .param("to", Instant.now().toString()))
@@ -87,10 +108,10 @@ class PaymentTransactionsExtractionTest {
   @Test
   @DisplayName("SLE-160: Missing date parameters should return 400 Bad Request")
   void testExtractTransactionsMissingParams() throws Exception {
-    String token = generateTestToken("USER-1", "CLIENT");
+    String token = generateTestToken(USER_1, "CLIENT");
     mockMvc
         .perform(
-            get("/v1/sales/payments/users/USER-1/transactions")
+            get("/v1/sales/payments/users/" + USER_1 + "/transactions")
                 .header("Authorization", "Bearer " + token))
         .andExpect(status().isBadRequest());
   }
@@ -98,11 +119,11 @@ class PaymentTransactionsExtractionTest {
   @Test
   @DisplayName("SLE-160: Invalid date range (from after to) should return 400 Bad Request")
   void testExtractTransactionsInvalidDateRange() throws Exception {
-    String token = generateTestToken("USER-1", "CLIENT");
+    String token = generateTestToken(USER_1, "CLIENT");
     Instant now = Instant.now();
     mockMvc
         .perform(
-            get("/v1/sales/payments/users/USER-1/transactions")
+            get("/v1/sales/payments/users/" + USER_1 + "/transactions")
                 .header("Authorization", "Bearer " + token)
                 .param("from", now.toString())
                 .param("to", now.minus(5, ChronoUnit.DAYS).toString()))
@@ -113,7 +134,7 @@ class PaymentTransactionsExtractionTest {
   @DisplayName(
       "SLE-160: Client querying own transactions extracts only approved transactions in interval")
   void testExtractTransactionsNominal() throws Exception {
-    String userId = "USER-42";
+    String userId = USER_42;
     Instant now = Instant.now();
     Instant windowStart = now.minus(15, ChronoUnit.DAYS);
 
@@ -183,7 +204,7 @@ class PaymentTransactionsExtractionTest {
             .status(PaymentTransaction.RG001_APPROVED_STATUS)
             .authorizationCode("AUTH-OTHER")
             .paymentMethodToken("TOK-OTHER")
-            .userId("OTHER-USER")
+            .userId(OTHER_USER)
             .createdAt(now.minus(1, ChronoUnit.DAYS))
             .build());
 
@@ -215,7 +236,7 @@ class PaymentTransactionsExtractionTest {
   @Test
   @DisplayName("SLE-160: Admin can query any user's transactions")
   void testExtractTransactionsAdminAccess() throws Exception {
-    String userId = "USER-99";
+    String userId = USER_99;
     Instant now = Instant.now();
 
     paymentTransactionRepository.save(
@@ -231,7 +252,7 @@ class PaymentTransactionsExtractionTest {
             .createdAt(now.minus(1, ChronoUnit.DAYS))
             .build());
 
-    String adminToken = generateTestToken("ADMIN-1", "ADMIN");
+    String adminToken = generateTestToken(ADMIN_1, "ADMIN");
 
     mockMvc
         .perform(

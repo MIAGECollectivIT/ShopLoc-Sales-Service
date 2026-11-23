@@ -7,17 +7,22 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Schema(description = "Item included in the order creation payload")
 public record CreateOrderItemRequest(
-    @Schema(description = "Store identifier", example = "1")
-        @NotNull(message = "Store ID is required")
-        Long storeId,
+    @Schema(
+            description = "Store public UUID identifier",
+            example = "11111111-1111-1111-1111-111111111111")
+        @NotNull(message = "Store UID is required")
+        UUID storeUid,
     @Schema(description = "Store name", example = "Boulangerie Le Moulin de Lille")
         String storeName,
-    @Schema(description = "Product identifier", example = "2")
-        @NotNull(message = "Product ID is required")
-        Long productId,
+    @Schema(
+            description = "Product public UUID identifier",
+            example = "22222222-2222-2222-2222-222222222222")
+        @NotNull(message = "Product UID is required")
+        UUID productUid,
     @Schema(description = "Product name", example = "Baguette de Tradition Française")
         @NotBlank(message = "Product name is required")
         String productName,

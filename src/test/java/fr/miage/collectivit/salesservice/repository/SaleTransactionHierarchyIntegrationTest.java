@@ -8,6 +8,7 @@ import fr.miage.collectivit.salesservice.model.SaleTransactionItem;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,7 +31,7 @@ class SaleTransactionHierarchyIntegrationTest {
     PhysicalSaleTransaction physicalSale =
         PhysicalSaleTransaction.builder()
             .transactionReference("PHYS-TEST-001")
-            .storeId(10L)
+            .storeUid(UUID.randomUUID())
             .merchantId("merchant_42")
             .clientCode("CL10001")
             .amount(new BigDecimal("35.00"))
@@ -43,6 +44,7 @@ class SaleTransactionHierarchyIntegrationTest {
 
     PhysicalSaleTransaction saved = physicalSaleTransactionRepository.save(physicalSale);
     assertThat(saved.getId()).isNotNull();
+    assertThat(saved.getUid()).isNotNull();
 
     // Query via specific physical repository
     Optional<PhysicalSaleTransaction> foundPhysical =
@@ -66,7 +68,7 @@ class SaleTransactionHierarchyIntegrationTest {
     SaleTransaction inAppSale =
         SaleTransaction.builder()
             .transactionReference("APP-ORDER-002")
-            .storeId(15L)
+            .storeUid(UUID.randomUUID())
             .clientCode("CL20002")
             .customerId("cust-uuid-999")
             .amount(new BigDecimal("18.50"))
@@ -78,7 +80,7 @@ class SaleTransactionHierarchyIntegrationTest {
 
     SaleTransactionItem item1 =
         SaleTransactionItem.builder()
-            .productId(101L)
+            .productUid(UUID.randomUUID())
             .productName("Pain de campagne Bio")
             .unitPrice(new BigDecimal("3.50"))
             .quantity(2)
@@ -87,7 +89,7 @@ class SaleTransactionHierarchyIntegrationTest {
 
     SaleTransactionItem item2 =
         SaleTransactionItem.builder()
-            .productId(102L)
+            .productUid(UUID.randomUUID())
             .productName("Fromage de chèvre")
             .unitPrice(new BigDecimal("5.75"))
             .quantity(2)
@@ -99,6 +101,7 @@ class SaleTransactionHierarchyIntegrationTest {
 
     SaleTransaction saved = saleTransactionRepository.save(inAppSale);
     assertThat(saved.getId()).isNotNull();
+    assertThat(saved.getUid()).isNotNull();
     assertThat(saved.getItems()).hasSize(2);
 
     List<SaleTransactionItem> persistedItems =

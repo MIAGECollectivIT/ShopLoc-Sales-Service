@@ -23,7 +23,6 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
   public static final String TOKEN_PREFIX = "Bearer ";
 
   public static final String ATTR_USER_ID = "authenticatedUserId";
-  public static final String ATTR_USER_DB_ID = "authenticatedUserDbId";
   public static final String ATTR_USER_EMAIL = "authenticatedUserEmail";
   public static final String ATTR_USER_ROLE = "authenticatedUserRole";
   public static final String ATTR_CLIENT_CODE = "authenticatedClientCode";
@@ -124,25 +123,11 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
   private void populateRequestAttributes(
       HttpServletRequest request, Claims claims, String userRole, String token) {
     request.setAttribute(ATTR_USER_ID, claims.get("userId", String.class));
-    Object dbIdObj = claims.get("dbId");
-    if (dbIdObj instanceof Number num) {
-      request.setAttribute(ATTR_USER_DB_ID, num.longValue());
-    } else if (dbIdObj != null) {
-      parseAndSetDbId(request, dbIdObj.toString());
-    }
     request.setAttribute(ATTR_USER_EMAIL, claims.get("email", String.class));
     request.setAttribute(ATTR_USER_ROLE, userRole);
     request.setAttribute(ATTR_CLIENT_CODE, claims.get("clientCode", String.class));
     request.setAttribute(ATTR_CLAIMS, claims);
     request.setAttribute(ATTR_RAW_TOKEN, token);
-  }
-
-  private void parseAndSetDbId(HttpServletRequest request, String dbIdStr) {
-    try {
-      request.setAttribute(ATTR_USER_DB_ID, Long.parseLong(dbIdStr));
-    } catch (NumberFormatException ignored) {
-      // Ignored if format does not match
-    }
   }
 
   private boolean checkRoleAuthorization(

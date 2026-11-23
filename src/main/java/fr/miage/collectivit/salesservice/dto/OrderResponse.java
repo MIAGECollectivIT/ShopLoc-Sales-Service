@@ -9,7 +9,6 @@ import java.util.UUID;
 @Schema(description = "Order response representation")
 @SuppressWarnings("PMD.ExcessiveParameterList")
 public record OrderResponse(
-    @Schema(description = "Order database identifier", example = "1") Long id,
     @Schema(
             description = "Order public unique UUID identifier",
             example = "668aacbd-d4bb-44e1-a23f-bbc2186ffef1")
@@ -33,7 +32,6 @@ public record OrderResponse(
     @Schema(description = "Order last update timestamp") Instant updatedAt) {
 
   public OrderResponse(
-      Long id,
       UUID uid,
       String orderReference,
       String customerId,
@@ -48,7 +46,6 @@ public record OrderResponse(
       List<OrderItemResponse> items,
       Instant receiptSentAt) {
     this(
-        id,
         uid,
         orderReference,
         customerId,
@@ -66,7 +63,6 @@ public record OrderResponse(
   }
 
   public OrderResponse(
-      Long id,
       UUID uid,
       String orderReference,
       String customerId,
@@ -80,7 +76,6 @@ public record OrderResponse(
       List<OrderStoreSummaryResponse> storeSummaries,
       List<OrderItemResponse> items) {
     this(
-        id,
         uid,
         orderReference,
         customerId,
@@ -94,36 +89,6 @@ public record OrderResponse(
         storeSummaries,
         items,
         null,
-        null);
-  }
-
-  public OrderResponse(
-      Long id,
-      String orderReference,
-      String customerId,
-      String customerEmail,
-      String clientCode,
-      BigDecimal totalAmount,
-      String currency,
-      String status,
-      Instant expiresAt,
-      Instant createdAt,
-      List<OrderStoreSummaryResponse> storeSummaries,
-      List<OrderItemResponse> items) {
-    this(
-        id,
-        UUID.randomUUID(),
-        orderReference,
-        customerId,
-        customerEmail,
-        clientCode,
-        totalAmount,
-        currency,
-        status,
-        expiresAt,
-        createdAt,
-        storeSummaries,
-        items,
         null);
   }
 }
