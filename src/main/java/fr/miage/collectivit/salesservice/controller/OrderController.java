@@ -19,6 +19,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -52,6 +54,7 @@ public class OrderController {
   private final OrderProcessingService orderProcessingService;
   private final ReceiptPdfService receiptPdfService;
   private final ReceiptEmailService receiptEmailService;
+  private final fr.miage.collectivit.salesservice.client.StoreClient storeClient;
 
   @PostMapping
   @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
@@ -120,6 +123,74 @@ public class OrderController {
     OrderResponse order = orderProcessingService.getOrderByReference(reference);
     verifyOrderReadAccess(order, role, userId, rawToken);
     return ResponseEntity.ok(order);
+  }
+
+  @PostMapping("/{reference}/itinerary")
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
+  @Operation(
+      summary = "Calculate optimized Click & Collect pickup tour for order",
+      description =
+          "Extracts store pickup locations from the order and calls Store Service to compute the optimal route and Google Maps link.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(responseCode = "200", description = "Itinerary calculated successfully"),
+        @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
+        @ApiResponse(responseCode = "404", description = "Order not found")
+      })
+  public ResponseEntity<fr.miage.collectivit.salesservice.dto.itinerary.OptimizeItineraryResponse>
+      getOrderItinerary(
+          @PathVariable String reference,
+          @RequestBody(required = false)
+              fr.miage.collectivit.salesservice.dto.itinerary.OrderItineraryRequest request,
+          HttpServletRequest httpRequest) {
+    String role = (String) httpRequest.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
+    String userId = (String) httpRequest.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+    String rawToken = (String) httpRequest.getAttribute(JwtAuthInterceptor.ATTR_RAW_TOKEN);
+
+    OrderResponse order = orderProcessingService.getOrderByReference(reference);
+    verifyOrderReadAccess(order, role, userId, rawToken);
+
+    if (order.storeSummaries() == null || order.storeSummaries().isEmpty()) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, "Aucun commerce associé à cette commande.");
+    }
+
+    List<UUID> storeUids =
+        order.storeSummaries().stream()
+            .map(fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse::storeUid)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+
+    var optRequest = buildOptimizeRequest(storeUids, request);
+    var response = storeClient.optimizeItinerary(optRequest);
+    return ResponseEntity.ok(response);
+  }
+
+  private fr.miage.collectivit.salesservice.dto.itinerary.OptimizeItineraryRequest
+      buildOptimizeRequest(
+          List<UUID> storeUids,
+          fr.miage.collectivit.salesservice.dto.itinerary.OrderItineraryRequest request) {
+    if (request == null) {
+      return new fr.miage.collectivit.salesservice.dto.itinerary.OptimizeItineraryRequest(
+          storeUids,
+          null,
+          null,
+          null,
+          fr.miage.collectivit.salesservice.dto.itinerary.TransportMode.DRIVING,
+          null);
+    }
+    var transportMode =
+        request.transportMode() != null
+            ? request.transportMode()
+            : fr.miage.collectivit.salesservice.dto.itinerary.TransportMode.DRIVING;
+    return new fr.miage.collectivit.salesservice.dto.itinerary.OptimizeItineraryRequest(
+        storeUids,
+        request.originLatitude(),
+        request.originLongitude(),
+        request.originAddress(),
+        transportMode,
+        request.departureTime());
   }
 
   @PatchMapping("/{reference}/status")

@@ -34,6 +34,7 @@ public class StoreClient {
 
   public static final String STOCK_UPDATE_PATH =
       "/v1/stores/{storeUid}/products/{productUid}/stock";
+  private static final String BEARER_PREFIX = "Bearer ";
 
   private final ServiceTokenProvider serviceTokenProvider;
   private RestClient restClient;
@@ -58,6 +59,28 @@ public class StoreClient {
     return factory;
   }
 
+  public fr.miage.collectivit.salesservice.dto.itinerary.OptimizeItineraryResponse
+      optimizeItinerary(
+          fr.miage.collectivit.salesservice.dto.itinerary.OptimizeItineraryRequest request) {
+    String token =
+        serviceTokenProvider != null ? serviceTokenProvider.generateServiceToken() : null;
+    try {
+      var requestBuilder = restClient.post().uri("/v1/stores/itinerary/optimize").body(request);
+      if (token != null && !token.isBlank()) {
+        requestBuilder.header(HttpHeaders.AUTHORIZATION, BEARER_PREFIX + token);
+      }
+      return requestBuilder
+          .retrieve()
+          .body(fr.miage.collectivit.salesservice.dto.itinerary.OptimizeItineraryResponse.class);
+    } catch (RestClientException ex) {
+      if (log.isErrorEnabled()) {
+        log.error("Failed to call Store Service optimize itinerary: {}", ex.getMessage());
+      }
+      throw new StoreServiceUnavailableException(
+          "Impossible de joindre le service des commerces pour le calcul d'itinéraire", ex);
+    }
+  }
+
   public void updateStock(UUID storeUid, UUID productUid, int quantityDelta) {
     String token =
         serviceTokenProvider != null ? serviceTokenProvider.generateServiceToken() : null;
@@ -78,7 +101,7 @@ public class StoreClient {
       var requestBuilder =
           restClient.get().uri("/v1/stores/{storeUid}/products/{productUid}", storeUid, productUid);
       if (token != null && !token.isBlank()) {
-        requestBuilder.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        requestBuilder.header(HttpHeaders.AUTHORIZATION, BEARER_PREFIX + token);
       }
       Map<?, ?> response = requestBuilder.retrieve().body(Map.class);
       if (response != null && response.get("price") != null) {
@@ -107,7 +130,7 @@ public class StoreClient {
           restClient
               .get()
               .uri("/v1/stores/me")
-              .header(HttpHeaders.AUTHORIZATION, "Bearer " + rawBearerToken.trim())
+              .header(HttpHeaders.AUTHORIZATION, BEARER_PREFIX + rawBearerToken.trim())
               .retrieve()
               .body(List.class);
       if (stores == null || stores.isEmpty()) {
@@ -150,7 +173,7 @@ public class StoreClient {
             .body(Map.of("quantityDelta", quantityDelta));
 
     if (token != null && !token.isBlank()) {
-      requestBuilder.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+      requestBuilder.header(HttpHeaders.AUTHORIZATION, BEARER_PREFIX + token);
     }
 
     requestBuilder.retrieve().toBodilessEntity();

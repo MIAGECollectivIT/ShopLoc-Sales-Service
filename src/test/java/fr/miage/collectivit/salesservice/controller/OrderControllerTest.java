@@ -49,6 +49,7 @@ class OrderControllerTest {
   @Mock private OrderProcessingService orderProcessingService;
   @Mock private ReceiptPdfService receiptPdfService;
   @Mock private ReceiptEmailService receiptEmailService;
+  @Mock private fr.miage.collectivit.salesservice.client.StoreClient storeClient;
 
   private MockMvc mockMvc;
   private ObjectMapper objectMapper;
@@ -60,7 +61,8 @@ class OrderControllerTest {
   void setUp() {
     mockMvc =
         MockMvcBuilders.standaloneSetup(
-                new OrderController(orderProcessingService, receiptPdfService, receiptEmailService))
+                new OrderController(
+                    orderProcessingService, receiptPdfService, receiptEmailService, storeClient))
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
 
@@ -754,5 +756,76 @@ class OrderControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.success").value(true))
         .andExpect(jsonPath("$.orderReference").value(ref));
+  }
+
+  @Test
+  @DisplayName("POST /v1/sales/orders/{ref}/itinerary should return optimized itinerary")
+  void shouldCalculateOrderItinerarySuccessfully() throws Exception {
+    String ref = "CMD-CC-20261113-ITIN";
+    UUID storeUid = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse summary =
+        new fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse(
+            storeUid, "Store Test", new BigDecimal("10.00"), 1, List.of());
+
+    OrderResponse order =
+        new OrderResponse(
+            UUID.randomUUID(),
+            ref,
+            "user-10",
+            "client@example.com",
+            "CLT-10",
+            new BigDecimal("10.00"),
+            "EUR",
+            "PAID",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(summary),
+            List.of(),
+            null);
+
+    org.mockito.Mockito.when(orderProcessingService.getOrderByReference(ref)).thenReturn(order);
+
+    var mockResponse =
+        new fr.miage.collectivit.salesservice.dto.itinerary.OptimizeItineraryResponse(
+            new fr.miage.collectivit.salesservice.dto.itinerary.ItineraryOriginResponse(
+                "Depart", 50.6, 3.0, true),
+            new fr.miage.collectivit.salesservice.dto.itinerary.ItineraryStepResponse(
+                1,
+                storeUid,
+                "Store Test",
+                "Address 1",
+                50.63,
+                3.06,
+                1.2,
+                4,
+                Instant.now(),
+                true,
+                false,
+                false,
+                "09:00-19:00",
+                null),
+            List.of(),
+            1.2,
+            4,
+            fr.miage.collectivit.salesservice.dto.itinerary.TransportMode.DRIVING,
+            "https://www.google.com/maps/dir/?api=1&origin=50.6,3.0&destination=50.63,3.06&travelmode=driving",
+            false,
+            List.of());
+
+    org.mockito.Mockito.when(storeClient.optimizeItinerary(any())).thenReturn(mockResponse);
+
+    mockMvc
+        .perform(
+            post("/v1/sales/orders/" + ref + "/itinerary")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"originLatitude\": 50.6, \"originLongitude\": 3.0}")
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ROLE, UserRole.CLIENT.name())
+                .requestAttr(JwtAuthInterceptor.ATTR_USER_ID, "user-10"))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.googleMapsUrl")
+                .value(
+                    "https://www.google.com/maps/dir/?api=1&origin=50.6,3.0&destination=50.63,3.06&travelmode=driving"))
+        .andExpect(jsonPath("$.totalDistanceKm").value(1.2));
   }
 }
