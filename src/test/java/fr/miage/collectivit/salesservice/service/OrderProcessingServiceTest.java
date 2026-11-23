@@ -466,14 +466,17 @@ class OrderProcessingServiceTest {
   @Test
   @DisplayName("Should reject payment settlement verification when no payment covers order total")
   void shouldRejectUnpaidOrderSettlementVerification() {
+    java.util.UUID uid = java.util.UUID.randomUUID();
     Order order =
         Order.builder()
+            .uid(uid)
             .orderReference("CMD-CC-UNPAID")
             .totalAmount(new BigDecimal("25.00"))
             .status(OrderStatus.PENDING_PAYMENT)
             .build();
     when(orderRepository.findByOrderReference("CMD-CC-UNPAID")).thenReturn(Optional.of(order));
-    when(paymentTransactionRepository.sumApprovedAmountByReference("CMD-CC-UNPAID"))
+    when(paymentTransactionRepository.sumApprovedAmountByReferences(
+            List.of("CMD-CC-UNPAID", uid.toString())))
         .thenReturn(BigDecimal.ZERO);
     when(walletTransactionRepository.sumAmountByOrderReferenceAndType(
             "CMD-CC-UNPAID", WalletTransactionType.DEBIT))
@@ -487,14 +490,17 @@ class OrderProcessingServiceTest {
   @Test
   @DisplayName("Should accept payment settlement verification for mixed card and wallet payments")
   void shouldAcceptMixedPaymentSettlementVerification() {
+    java.util.UUID uid = java.util.UUID.randomUUID();
     Order order =
         Order.builder()
+            .uid(uid)
             .orderReference("CMD-CC-MIXED")
             .totalAmount(new BigDecimal("25.00"))
             .status(OrderStatus.PENDING_PAYMENT)
             .build();
     when(orderRepository.findByOrderReference("CMD-CC-MIXED")).thenReturn(Optional.of(order));
-    when(paymentTransactionRepository.sumApprovedAmountByReference("CMD-CC-MIXED"))
+    when(paymentTransactionRepository.sumApprovedAmountByReferences(
+            List.of("CMD-CC-MIXED", uid.toString())))
         .thenReturn(new BigDecimal("15.00"));
     when(walletTransactionRepository.sumAmountByOrderReferenceAndType(
             "CMD-CC-MIXED", WalletTransactionType.DEBIT))
