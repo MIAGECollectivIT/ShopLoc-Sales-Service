@@ -82,7 +82,8 @@ class StoreClientTest {
         .andRespond(withSuccess());
 
     Optional<BigDecimal> price = storeClient.getProductPrice(storeUid, productUid);
-    assertThat(price).contains(new BigDecimal("4.50"));
+    assertThat(price).isPresent();
+    assertThat(price.get()).isEqualByComparingTo("4.50");
 
     storeClient.updateStock(storeUid, productUid, -2);
     mockServer.verify();
