@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import fr.miage.collectivit.salesservice.dto.event.PhysicalPaymentCompletedEvent;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ class PhysicalPaymentEventPublisherTest {
     PhysicalPaymentCompletedEvent event =
         new PhysicalPaymentCompletedEvent(
             "TX-PHY-001",
-            10L,
+            UUID.randomUUID(),
             "k7P9xQ2",
             "user-123",
             new BigDecimal("25.50"),
@@ -54,7 +55,7 @@ class PhysicalPaymentEventPublisherTest {
     PhysicalPaymentCompletedEvent event =
         new PhysicalPaymentCompletedEvent(
             "TX-PHY-NO-CODE",
-            10L,
+            UUID.randomUUID(),
             "   ",
             "user-123",
             new BigDecimal("15.00"),
@@ -72,10 +73,22 @@ class PhysicalPaymentEventPublisherTest {
     publisher.publishPhysicalPaymentCompleted(null);
     publisher.publishPhysicalPaymentCompleted(
         new PhysicalPaymentCompletedEvent(
-            null, 10L, "CODE", "user-1", new BigDecimal("10.00"), "EUR", Instant.now()));
+            null,
+            UUID.randomUUID(),
+            "CODE",
+            "user-1",
+            new BigDecimal("10.00"),
+            "EUR",
+            Instant.now()));
     publisher.publishPhysicalPaymentCompleted(
         new PhysicalPaymentCompletedEvent(
-            "   ", 10L, "CODE", "user-2", new BigDecimal("10.00"), "EUR", Instant.now()));
+            "   ",
+            UUID.randomUUID(),
+            "CODE",
+            "user-2",
+            new BigDecimal("10.00"),
+            "EUR",
+            Instant.now()));
 
     verify(kafkaTemplate, never()).send(any(), any(), any());
   }
@@ -87,7 +100,7 @@ class PhysicalPaymentEventPublisherTest {
     PhysicalPaymentCompletedEvent event =
         new PhysicalPaymentCompletedEvent(
             "TX-PHY-002",
-            10L,
+            UUID.randomUUID(),
             "k7P9xQ2",
             "user-123",
             new BigDecimal("30.00"),
@@ -104,7 +117,7 @@ class PhysicalPaymentEventPublisherTest {
     PhysicalPaymentCompletedEvent event =
         new PhysicalPaymentCompletedEvent(
             "TX-PHY-FAIL",
-            10L,
+            UUID.randomUUID(),
             "k7P9xQ2",
             "user-123",
             new BigDecimal("40.00"),

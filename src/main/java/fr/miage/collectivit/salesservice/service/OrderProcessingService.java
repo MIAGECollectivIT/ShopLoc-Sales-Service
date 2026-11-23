@@ -123,10 +123,11 @@ public class OrderProcessingService {
 
       OrderItem item =
           OrderItem.builder()
+              .uid(UUID.randomUUID())
               .order(order)
-              .storeId(itemReq.storeId())
+              .storeUid(itemReq.storeUid())
               .storeName(itemReq.storeName())
-              .productId(itemReq.productId())
+              .productUid(itemReq.productUid())
               .productName(itemReq.productName())
               .unitPrice(itemReq.unitPrice())
               .quantity(itemReq.quantity())
@@ -176,7 +177,7 @@ public class OrderProcessingService {
         return byUid;
       }
     } catch (IllegalArgumentException ignored) {
-      // Not a UUID, fallback to reference or ID
+      // Not a UUID, lookup by order reference
     }
     Optional<Order> byRef = orderRepository.findByOrderReference(trimmed);
     if (byRef.isPresent()) {
@@ -222,19 +223,19 @@ public class OrderProcessingService {
   }
 
   public void verifyMerchantOwnsOrderStore(OrderResponse order, String rawBearerToken) {
-    Set<Long> merchantStoreIds = storeClient.getMerchantStoreIds(rawBearerToken);
-    if (merchantStoreIds.isEmpty()) {
+    Set<UUID> merchantStoreUids = storeClient.getMerchantStoreUids(rawBearerToken);
+    if (merchantStoreUids.isEmpty()) {
       throw new ForbiddenException(
           "Access denied: unable to verify merchant store ownership for this order");
     }
     boolean ownsAnyStore =
         order.storeSummaries() != null
             && order.storeSummaries().stream()
-                .anyMatch(s -> s.storeId() != null && merchantStoreIds.contains(s.storeId()));
+                .anyMatch(s -> s.storeUid() != null && merchantStoreUids.contains(s.storeUid()));
     if (!ownsAnyStore && order.items() != null) {
       ownsAnyStore =
           order.items().stream()
-              .anyMatch(i -> i.storeId() != null && merchantStoreIds.contains(i.storeId()));
+              .anyMatch(i -> i.storeUid() != null && merchantStoreUids.contains(i.storeUid()));
     }
     if (!ownsAnyStore) {
       throw new ForbiddenException(
@@ -305,31 +306,31 @@ public class OrderProcessingService {
   @SuppressWarnings("PMD.AvoidInstantiatingObjectsInLoops")
   public OrderResponse mapToResponse(Order order) {
     List<OrderItemResponse> itemResponses = new ArrayList<>();
-    Map<Long, List<OrderItemResponse>> storeItemsMap = new LinkedHashMap<>();
-    Map<Long, String> storeNamesMap = new LinkedHashMap<>();
+    Map<UUID, List<OrderItemResponse>> storeItemsMap = new LinkedHashMap<>();
+    Map<UUID, String> storeNamesMap = new LinkedHashMap<>();
 
     for (OrderItem item : order.getItems()) {
       OrderItemResponse itemResp =
           new OrderItemResponse(
-              item.getId(),
-              item.getStoreId(),
+              item.getUid(),
+              item.getStoreUid(),
               item.getStoreName(),
-              item.getProductId(),
+              item.getProductUid(),
               item.getProductName(),
               item.getUnitPrice(),
               item.getQuantity(),
               item.getTotalPrice());
       itemResponses.add(itemResp);
 
-      storeItemsMap.computeIfAbsent(item.getStoreId(), k -> new ArrayList<>()).add(itemResp);
+      storeItemsMap.computeIfAbsent(item.getStoreUid(), k -> new ArrayList<>()).add(itemResp);
       if (item.getStoreName() != null && !item.getStoreName().isBlank()) {
-        storeNamesMap.put(item.getStoreId(), item.getStoreName());
+        storeNamesMap.put(item.getStoreUid(), item.getStoreName());
       }
     }
 
     List<OrderStoreSummaryResponse> storeSummaries = new ArrayList<>();
-    for (Map.Entry<Long, List<OrderItemResponse>> entry : storeItemsMap.entrySet()) {
-      Long storeId = entry.getKey();
+    for (Map.Entry<UUID, List<OrderItemResponse>> entry : storeItemsMap.entrySet()) {
+      UUID storeUid = entry.getKey();
       List<OrderItemResponse> storeItems = entry.getValue();
 
       BigDecimal subtotal =
@@ -339,14 +340,13 @@ public class OrderProcessingService {
 
       int count = storeItems.stream().mapToInt(OrderItemResponse::quantity).sum();
 
-      String storeName = storeNamesMap.getOrDefault(storeId, "Commerce #" + storeId);
+      String storeName = storeNamesMap.getOrDefault(storeUid, "Commerce " + storeUid);
 
       storeSummaries.add(
-          new OrderStoreSummaryResponse(storeId, storeName, subtotal, count, storeItems));
+          new OrderStoreSummaryResponse(storeUid, storeName, subtotal, count, storeItems));
     }
 
     return new OrderResponse(
-        order.getId(),
         order.getUid(),
         order.getOrderReference(),
         order.getCustomerId(),
@@ -368,9 +368,9 @@ public class OrderProcessingService {
     List<ReservedItem> reservedItems = new ArrayList<>();
     try {
       for (CreateOrderItemRequest itemReq : items) {
-        storeClient.updateStock(itemReq.storeId(), itemReq.productId(), -itemReq.quantity());
+        storeClient.updateStock(itemReq.storeUid(), itemReq.productUid(), -itemReq.quantity());
         reservedItems.add(
-            new ReservedItem(itemReq.storeId(), itemReq.productId(), itemReq.quantity()));
+            new ReservedItem(itemReq.storeUid(), itemReq.productUid(), itemReq.quantity()));
       }
     } catch (RuntimeException ex) {
       rollbackReservedStock(reservedItems);
@@ -385,13 +385,13 @@ public class OrderProcessingService {
     }
     for (ReservedItem reserved : reservedItems) {
       try {
-        storeClient.updateStock(reserved.storeId(), reserved.productId(), reserved.quantity());
+        storeClient.updateStock(reserved.storeUid(), reserved.productUid(), reserved.quantity());
       } catch (RuntimeException rollbackEx) {
         if (log.isErrorEnabled()) {
           log.error(
               "Rollback failed for store {} product {}: {}",
-              reserved.storeId(),
-              reserved.productId(),
+              reserved.storeUid(),
+              reserved.productUid(),
               rollbackEx.getMessage());
         }
       }
@@ -419,14 +419,14 @@ public class OrderProcessingService {
     }
     for (OrderItem item : order.getItems()) {
       try {
-        storeClient.updateStock(item.getStoreId(), item.getProductId(), item.getQuantity());
+        storeClient.updateStock(item.getStoreUid(), item.getProductUid(), item.getQuantity());
       } catch (RuntimeException ex) {
         if (log.isErrorEnabled()) {
           log.error(
               "Failed to release stock for order {} store {} product {}: {}",
               order.getOrderReference(),
-              item.getStoreId(),
-              item.getProductId(),
+              item.getStoreUid(),
+              item.getProductUid(),
               ex.getMessage());
         }
       }
@@ -437,21 +437,21 @@ public class OrderProcessingService {
     for (CreateOrderItemRequest item : items) {
       if (item.unitPrice() == null || item.unitPrice().compareTo(BigDecimal.ZERO) <= 0) {
         throw new IllegalArgumentException(
-            "Unit price must be strictly positive for product #" + item.productId());
+            "Unit price must be strictly positive for product " + item.productUid());
       }
       Optional<BigDecimal> verifiedPrice =
-          storeClient.getProductPrice(item.storeId(), item.productId());
+          storeClient.getProductPrice(item.storeUid(), item.productUid());
       if (verifiedPrice.isEmpty()) {
         throw new StoreServiceUnavailableException(
-            "Unable to verify price for product #"
-                + item.productId()
-                + " in store #"
-                + item.storeId());
+            "Unable to verify price for product "
+                + item.productUid()
+                + " in store "
+                + item.storeUid());
       }
       if (verifiedPrice.get().compareTo(item.unitPrice()) != 0) {
         throw new IllegalArgumentException(
-            "Price mismatch for product #"
-                + item.productId()
+            "Price mismatch for product "
+                + item.productUid()
                 + ": expected "
                 + verifiedPrice.get()
                 + " EUR but received "
@@ -484,28 +484,28 @@ public class OrderProcessingService {
     if (items == null || items.isEmpty()) {
       return Collections.emptyList();
     }
-    Map<Long, BigDecimal> storeAmounts = new LinkedHashMap<>();
-    Map<Long, String> storeNames = new LinkedHashMap<>();
+    Map<UUID, BigDecimal> storeAmounts = new LinkedHashMap<>();
+    Map<UUID, String> storeNames = new LinkedHashMap<>();
     for (OrderItem item : items) {
-      Long storeId = item.getStoreId();
-      if (storeId == null) {
+      UUID storeUid = item.getStoreUid();
+      if (storeUid == null) {
         continue;
       }
       BigDecimal itemTotal = Objects.requireNonNullElse(item.getTotalPrice(), BigDecimal.ZERO);
-      storeAmounts.merge(storeId, itemTotal, BigDecimal::add);
+      storeAmounts.merge(storeUid, itemTotal, BigDecimal::add);
       if (item.getStoreName() != null) {
-        storeNames.putIfAbsent(storeId, item.getStoreName());
+        storeNames.putIfAbsent(storeUid, item.getStoreName());
       }
     }
     List<StoreOrderBreakdown> breakdowns = new ArrayList<>();
     storeAmounts.forEach(
-        (storeId, amount) -> {
+        (storeUid, amount) -> {
           if (amount.compareTo(BigDecimal.ZERO) > 0) {
-            breakdowns.add(new StoreOrderBreakdown(storeId, storeNames.get(storeId), amount));
+            breakdowns.add(new StoreOrderBreakdown(storeUid, storeNames.get(storeUid), amount));
           }
         });
     return breakdowns;
   }
 
-  private record ReservedItem(Long storeId, Long productId, int quantity) {}
+  private record ReservedItem(UUID storeUid, UUID productUid, int quantity) {}
 }

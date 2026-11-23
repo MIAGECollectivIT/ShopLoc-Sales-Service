@@ -16,6 +16,7 @@ import fr.miage.collectivit.salesservice.dto.WalletReloadRequest;
 import io.cucumber.java.Before;
 import io.cucumber.java.en.When;
 import java.math.BigDecimal;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -105,7 +106,12 @@ public class WalletSteps extends AbstractScenario {
   public void whenClientDebitsWalletAtStore(String amountStr, String storeName) throws Exception {
     BigDecimal amount = new BigDecimal(amountStr);
     WalletDebitRequest request =
-        new WalletDebitRequest(amount, 1L, storeName, "ORD-BDD-001", "Paiement en boutique");
+        new WalletDebitRequest(
+            amount,
+            UUID.fromString("11111111-1111-1111-1111-111111111001"),
+            storeName,
+            "ORD-BDD-001",
+            "Paiement en boutique");
 
     ResultActions resultActions =
         mockMvc.perform(

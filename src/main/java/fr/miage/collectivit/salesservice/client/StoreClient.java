@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +32,8 @@ import org.springframework.web.client.RestClientException;
 @Component
 public class StoreClient {
 
-  public static final String STOCK_UPDATE_PATH = "/v1/stores/{storeId}/products/{productId}/stock";
+  public static final String STOCK_UPDATE_PATH =
+      "/v1/stores/{storeUid}/products/{productUid}/stock";
 
   private final ServiceTokenProvider serviceTokenProvider;
   private RestClient restClient;
@@ -56,25 +58,25 @@ public class StoreClient {
     return factory;
   }
 
-  public void updateStock(Long storeId, Long productId, int quantityDelta) {
+  public void updateStock(UUID storeUid, UUID productUid, int quantityDelta) {
     String token =
         serviceTokenProvider != null ? serviceTokenProvider.generateServiceToken() : null;
     try {
-      executeStockPatch(storeId, productId, quantityDelta, token);
-      logSuccess(storeId, productId, quantityDelta);
+      executeStockPatch(storeUid, productUid, quantityDelta, token);
+      logSuccess(storeUid, productUid, quantityDelta);
     } catch (HttpClientErrorException.BadRequest ex) {
-      handleBadRequest(storeId, productId, ex);
+      handleBadRequest(storeUid, productUid, ex);
     } catch (RestClientException ex) {
-      handleClientException(storeId, productId, ex);
+      handleClientException(storeUid, productUid, ex);
     }
   }
 
-  public Optional<java.math.BigDecimal> getProductPrice(Long storeId, Long productId) {
+  public Optional<java.math.BigDecimal> getProductPrice(UUID storeUid, UUID productUid) {
     String token =
         serviceTokenProvider != null ? serviceTokenProvider.generateServiceToken() : null;
     try {
       var requestBuilder =
-          restClient.get().uri("/v1/stores/{storeId}/products/{productId}", storeId, productId);
+          restClient.get().uri("/v1/stores/{storeUid}/products/{productUid}", storeUid, productUid);
       if (token != null && !token.isBlank()) {
         requestBuilder.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
       }
@@ -87,8 +89,8 @@ public class StoreClient {
       if (log.isDebugEnabled()) {
         log.debug(
             "Could not fetch product price from Store Service for store {} product {}: {}",
-            storeId,
-            productId,
+            storeUid,
+            productUid,
             ex.getMessage());
       }
       return Optional.empty();
@@ -96,7 +98,7 @@ public class StoreClient {
   }
 
   @SuppressWarnings("unchecked")
-  public Set<Long> getMerchantStoreIds(String rawBearerToken) {
+  public Set<UUID> getMerchantStoreUids(String rawBearerToken) {
     if (rawBearerToken == null || rawBearerToken.isBlank()) {
       return Set.of();
     }
@@ -111,39 +113,39 @@ public class StoreClient {
       if (stores == null || stores.isEmpty()) {
         return Set.of();
       }
-      Set<Long> storeIds = new HashSet<>();
+      Set<UUID> storeUids = new HashSet<>();
       for (Map<String, Object> store : stores) {
-        extractStoreId(store).ifPresent(storeIds::add);
+        extractStoreUid(store).ifPresent(storeUids::add);
       }
-      return storeIds;
+      return storeUids;
     } catch (RestClientException ex) {
       if (log.isWarnEnabled()) {
-        log.warn("Failed to fetch merchant store IDs from Store Service: {}", ex.getMessage());
+        log.warn("Failed to fetch merchant store UIDs from Store Service: {}", ex.getMessage());
       }
       return Set.of();
     }
   }
 
-  private Optional<Long> extractStoreId(Map<String, Object> store) {
-    Object idObj = store != null ? store.get("id") : null;
-    if (idObj instanceof Number num) {
-      return Optional.of(num.longValue());
+  private Optional<UUID> extractStoreUid(Map<String, Object> store) {
+    Object uidObj = store != null ? store.get("uid") : null;
+    if (uidObj instanceof UUID uuid) {
+      return Optional.of(uuid);
     }
-    if (idObj == null) {
+    if (uidObj == null) {
       return Optional.empty();
     }
     try {
-      return Optional.of(Long.parseLong(idObj.toString()));
-    } catch (NumberFormatException ignored) {
+      return Optional.of(UUID.fromString(uidObj.toString().trim()));
+    } catch (IllegalArgumentException ignored) {
       return Optional.empty();
     }
   }
 
-  private void executeStockPatch(Long storeId, Long productId, int quantityDelta, String token) {
+  private void executeStockPatch(UUID storeUid, UUID productUid, int quantityDelta, String token) {
     var requestBuilder =
         restClient
             .patch()
-            .uri(STOCK_UPDATE_PATH, storeId, productId)
+            .uri(STOCK_UPDATE_PATH, storeUid, productUid)
             .contentType(MediaType.APPLICATION_JSON)
             .body(Map.of("quantityDelta", quantityDelta));
 
@@ -154,35 +156,35 @@ public class StoreClient {
     requestBuilder.retrieve().toBodilessEntity();
   }
 
-  private void logSuccess(Long storeId, Long productId, int quantityDelta) {
+  private void logSuccess(UUID storeUid, UUID productUid, int quantityDelta) {
     if (log.isInfoEnabled()) {
       log.info(
           "Stock updated on Store Service: store={}, product={}, delta={}",
-          storeId,
-          productId,
+          storeUid,
+          productUid,
           quantityDelta);
     }
   }
 
   private void handleBadRequest(
-      Long storeId, Long productId, HttpClientErrorException.BadRequest ex) {
+      UUID storeUid, UUID productUid, HttpClientErrorException.BadRequest ex) {
     if (log.isWarnEnabled()) {
       log.warn(
           "Insufficient stock on store {} product {}: {}",
-          storeId,
-          productId,
+          storeUid,
+          productUid,
           ex.getResponseBodyAsString());
     }
     throw new InsufficientStockException(
-        "Stock insuffisant pour le produit #" + productId + " auprès du commerce #" + storeId, ex);
+        "Stock insuffisant pour le produit " + productUid + " auprès du commerce " + storeUid, ex);
   }
 
-  private void handleClientException(Long storeId, Long productId, RestClientException ex) {
+  private void handleClientException(UUID storeUid, UUID productUid, RestClientException ex) {
     if (log.isErrorEnabled()) {
       log.error(
           "Failed to communicate with Store Service for store {} product {}: {}",
-          storeId,
-          productId,
+          storeUid,
+          productUid,
           ex.getMessage());
     }
     throw new StoreServiceUnavailableException(

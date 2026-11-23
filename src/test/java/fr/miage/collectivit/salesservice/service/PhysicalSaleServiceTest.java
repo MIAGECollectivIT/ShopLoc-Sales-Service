@@ -12,11 +12,14 @@ import fr.miage.collectivit.salesservice.dto.PhysicalSaleRequest;
 import fr.miage.collectivit.salesservice.dto.PhysicalSaleResponse;
 import fr.miage.collectivit.salesservice.dto.event.PhysicalPaymentCompletedEvent;
 import fr.miage.collectivit.salesservice.event.PhysicalPaymentEventPublisher;
+import fr.miage.collectivit.salesservice.event.TransactionApprovedKafkaEvent;
+import fr.miage.collectivit.salesservice.event.TransactionEventPublisher;
 import fr.miage.collectivit.salesservice.exception.PhysicalSaleNotFoundException;
 import fr.miage.collectivit.salesservice.model.PhysicalSaleTransaction;
 import fr.miage.collectivit.salesservice.repository.PhysicalSaleTransactionRepository;
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,7 @@ class PhysicalSaleServiceTest {
 
   @Mock private PhysicalSaleTransactionRepository repository;
   @Mock private LoyaltyRateClient loyaltyRateClient;
+  @Mock private TransactionEventPublisher transactionEventPublisher;
   @Mock private PhysicalPaymentEventPublisher physicalPaymentEventPublisher;
 
   private PhysicalSaleService physicalSaleService;
@@ -38,20 +42,24 @@ class PhysicalSaleServiceTest {
   @BeforeEach
   void setUp() {
     physicalSaleService =
-        new PhysicalSaleService(repository, loyaltyRateClient, null, physicalPaymentEventPublisher);
+        new PhysicalSaleService(
+            repository,
+            loyaltyRateClient,
+            transactionEventPublisher,
+            physicalPaymentEventPublisher);
   }
 
   @Test
   @DisplayName("Should record physical sale and calculate points accurately with custom rate")
   void shouldRecordPhysicalSaleWithCustomRate() {
-    Long storeId = 10L;
+    UUID storeUid = UUID.fromString("11111111-1111-1111-1111-111111111010");
     MerchantLoyaltyRateDto customRate =
-        new MerchantLoyaltyRateDto(storeId, new BigDecimal("2.00"), new BigDecimal("1.0"), true);
-    when(loyaltyRateClient.getStoreLoyaltyRate(storeId)).thenReturn(customRate);
+        new MerchantLoyaltyRateDto(storeUid, new BigDecimal("2.00"), new BigDecimal("1.0"), true);
+    when(loyaltyRateClient.getStoreLoyaltyRate(storeUid)).thenReturn(customRate);
 
     PhysicalSaleRequest request =
         new PhysicalSaleRequest(
-            storeId, "k7P9xQ2", "cust-123", new BigDecimal("25.50"), "EUR", "CASH");
+            storeUid, "k7P9xQ2", "cust-123", new BigDecimal("25.50"), "EUR", "CASH");
 
     when(repository.save(any(PhysicalSaleTransaction.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
@@ -60,7 +68,8 @@ class PhysicalSaleServiceTest {
         physicalSaleService.recordPhysicalSale(request, "merchant-user-456");
 
     assertThat(response).isNotNull();
-    assertThat(response.storeId()).isEqualTo(storeId);
+    assertThat(response.uid()).isNotNull();
+    assertThat(response.storeUid()).isEqualTo(storeUid);
     assertThat(response.clientCode()).isEqualTo("K7P9XQ2");
     assertThat(response.amount()).isEqualByComparingTo(new BigDecimal("25.50"));
     // 25.50 * 1.0 / 2.00 = 12.75 -> floor to nearest 0.5 step is 12.5 points
@@ -80,22 +89,29 @@ class PhysicalSaleServiceTest {
     verify(physicalPaymentEventPublisher).publishPhysicalPaymentCompleted(eventCaptor.capture());
     PhysicalPaymentCompletedEvent publishedEvent = eventCaptor.getValue();
     assertThat(publishedEvent.transactionReference()).isEqualTo(response.transactionReference());
-    assertThat(publishedEvent.storeId()).isEqualTo(storeId);
+    assertThat(publishedEvent.storeUid()).isEqualTo(storeUid);
     assertThat(publishedEvent.clientCode()).isEqualTo("K7P9XQ2");
     assertThat(publishedEvent.customerId()).isEqualTo("cust-123");
     assertThat(publishedEvent.amount()).isEqualByComparingTo(new BigDecimal("25.50"));
     assertThat(publishedEvent.currency()).isEqualTo("EUR");
+
+    ArgumentCaptor<TransactionApprovedKafkaEvent> txCaptor =
+        ArgumentCaptor.forClass(TransactionApprovedKafkaEvent.class);
+    verify(transactionEventPublisher).publishTransactionApproved(txCaptor.capture());
+    TransactionApprovedKafkaEvent txEvent = txCaptor.getValue();
+    assertThat(txEvent.transactionId()).isEqualTo(saved.getUid().toString());
+    assertThat(UUID.fromString(txEvent.transactionId())).isEqualTo(saved.getUid());
   }
 
   @Test
   @DisplayName("Should record physical sale using default loyalty rate (1 EUR = 1 PT)")
   void shouldRecordPhysicalSaleWithDefaultRate() {
-    Long storeId = 5L;
-    MerchantLoyaltyRateDto defaultRate = MerchantLoyaltyRateDto.defaultForStore(storeId);
-    when(loyaltyRateClient.getStoreLoyaltyRate(storeId)).thenReturn(defaultRate);
+    UUID storeUid = UUID.fromString("11111111-1111-1111-1111-111111111005");
+    MerchantLoyaltyRateDto defaultRate = MerchantLoyaltyRateDto.defaultForStore(storeUid);
+    when(loyaltyRateClient.getStoreLoyaltyRate(storeUid)).thenReturn(defaultRate);
 
     PhysicalSaleRequest request =
-        new PhysicalSaleRequest(storeId, "ABC1234", null, new BigDecimal("42.00"), "EUR", "CARD");
+        new PhysicalSaleRequest(storeUid, "ABC1234", null, new BigDecimal("42.00"), "EUR", "CARD");
 
     when(repository.save(any(PhysicalSaleTransaction.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
@@ -111,7 +127,8 @@ class PhysicalSaleServiceTest {
   @DisplayName("Should calculate points with half-point granularity (0.5 steps)")
   void shouldCalculatePointsWithHalfPointGranularity() {
     MerchantLoyaltyRateDto rate =
-        new MerchantLoyaltyRateDto(1L, new BigDecimal("1.00"), new BigDecimal("0.5"), true);
+        new MerchantLoyaltyRateDto(
+            UUID.randomUUID(), new BigDecimal("1.00"), new BigDecimal("0.5"), true);
 
     // 10.00 EUR * 0.5 = 5.0 points
     BigDecimal points1 = physicalSaleService.calculatePoints(new BigDecimal("10.00"), rate);
@@ -132,8 +149,9 @@ class PhysicalSaleServiceTest {
     String ref = "PHYS-20261110-XYZ123";
     PhysicalSaleTransaction entity =
         PhysicalSaleTransaction.builder()
+            .uid(UUID.randomUUID())
             .transactionReference(ref)
-            .storeId(10L)
+            .storeUid(UUID.randomUUID())
             .merchantId("m1")
             .clientCode("CL123")
             .amount(new BigDecimal("15.00"))

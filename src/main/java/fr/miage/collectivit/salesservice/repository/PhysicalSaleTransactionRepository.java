@@ -3,6 +3,7 @@ package fr.miage.collectivit.salesservice.repository;
 import fr.miage.collectivit.salesservice.model.PhysicalSaleTransaction;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -12,7 +13,7 @@ public interface PhysicalSaleTransactionRepository
 
   Optional<PhysicalSaleTransaction> findByTransactionReference(String transactionReference);
 
-  List<PhysicalSaleTransaction> findByStoreIdOrderByCreatedAtDesc(Long storeId);
+  List<PhysicalSaleTransaction> findByStoreUidOrderByCreatedAtDesc(UUID storeUid);
 
   List<PhysicalSaleTransaction> findByClientCodeOrderByCreatedAtDesc(String clientCode);
 }

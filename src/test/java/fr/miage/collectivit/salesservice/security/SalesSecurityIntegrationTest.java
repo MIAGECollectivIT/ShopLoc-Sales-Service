@@ -130,7 +130,7 @@ class SalesSecurityIntegrationTest {
             post("/v1/sales/physical")
                 .header("Authorization", "Bearer " + token)
                 .contentType("application/json")
-                .content("{\"storeId\":1,\"amount\":10.0}"))
+                .content("{\"storeUid\":\"11111111-1111-1111-1111-111111111111\",\"amount\":10.0}"))
         .andExpect(status().isForbidden());
   }
 
@@ -266,5 +266,33 @@ class SalesSecurityIntegrationTest {
                 .contentType("application/json")
                 .content("{\"amount\":10.00}"))
         .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("GET /v1/sales/wallet?userId=not-a-uuid -> should return 400 Bad Request")
+  void shouldReturn400WhenWalletUserIdIsNotUuid() throws Exception {
+    String token = generateTestToken("ADMIN", "admin@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            get("/v1/sales/wallet")
+                .param("userId", "not-a-uuid")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400));
+  }
+
+  @Test
+  @DisplayName(
+      "GET /v1/sales/payments/users/123/transactions -> should return 400 Bad Request for non-UUID userId")
+  void shouldReturn400WhenPaymentUserIdIsNotUuid() throws Exception {
+    String token = generateTestToken("ADMIN", "admin@shoploc.fr", UUID.randomUUID().toString());
+    mockMvc
+        .perform(
+            get("/v1/sales/payments/users/123/transactions")
+                .param("from", "2026-01-01T00:00:00Z")
+                .param("to", "2026-12-31T23:59:59Z")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400));
   }
 }

@@ -3,7 +3,7 @@ Feature: Multi-Store Click & Collect Order Creation and Amount Locking (SLE-186)
 
   Scenario: Successfully create a multi-store click and collect order with calculated totals
     Given an authenticated user with role "CLIENT"
-    And a customer creates a multi-store order with 2 items from store 1 at "1.35" EUR and 1 item from store 2 at "22.00" EUR
+    And a customer creates a multi-store order with 2 items from store "11111111-1111-1111-1111-111111111001" at "1.35" EUR and 1 item from store "11111111-1111-1111-1111-111111111002" at "22.00" EUR
     Then the HTTP response status should be 201
     And the response JSON field "status" should equal "PENDING_PAYMENT"
     And the response JSON field "currency" should equal "EUR"
@@ -17,8 +17,8 @@ Feature: Multi-Store Click & Collect Order Creation and Amount Locking (SLE-186)
 
   Scenario: Reject order creation when item stock is insufficient in Store Service
     Given an authenticated user with role "CLIENT"
-    And product 99 in store 1 has insufficient stock
-    When an order is created with 1 item of product 99 from store 1 at "10.00" EUR
+    And product "22222222-2222-2222-2222-222222222099" in store "11111111-1111-1111-1111-111111111001" has insufficient stock
+    When an order is created with 1 item of product "22222222-2222-2222-2222-222222222099" from store "11111111-1111-1111-1111-111111111001" at "10.00" EUR
     Then the HTTP response status should be 400
 
   Scenario: Reject order creation when unauthenticated

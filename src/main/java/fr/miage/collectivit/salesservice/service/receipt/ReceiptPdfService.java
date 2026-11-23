@@ -244,7 +244,7 @@ public class ReceiptPdfService {
     String safeStoreName =
         (storeSummary.storeName() != null && !storeSummary.storeName().isBlank())
             ? storeSummary.storeName()
-            : "Commerce #" + storeSummary.storeId();
+            : "Commerce " + storeSummary.storeUid();
     String storeLabel = "COMMERCE PARTENAIRE : " + safeStoreName.toUpperCase(Locale.FRENCH);
     PdfPCell storeHeaderCell = new PdfPCell(new Phrase(storeLabel, storeTitleFont));
     storeHeaderCell.setColspan(4);

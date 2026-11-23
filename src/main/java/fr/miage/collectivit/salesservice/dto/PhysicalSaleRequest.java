@@ -6,16 +6,17 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Schema(description = "In-store physical checkout transaction registration request")
 public record PhysicalSaleRequest(
-    @Schema(description = "Store identifier", example = "10")
-        @NotNull(message = "Store identifier is mandatory")
-        @Positive(message = "Store identifier must be positive")
-        Long storeId,
+    @Schema(
+            description = "Store public UUID identifier",
+            example = "11111111-1111-1111-1111-111111111111")
+        @NotNull(message = "Store UID is mandatory")
+        UUID storeUid,
     @Schema(description = "Customer 7-character loyalty code", example = "k7P9xQ2")
         @NotBlank(message = "Client loyalty code is mandatory")
         @Size(min = 3, max = 32, message = "Client code must be between 3 and 32 characters")

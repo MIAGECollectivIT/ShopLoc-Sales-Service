@@ -1,12 +1,13 @@
 package fr.miage.collectivit.salesservice.dto;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record MerchantLoyaltyRateDto(
-    Long storeId, BigDecimal euroAmount, BigDecimal pointsReward, boolean isCustom) {
+    UUID storeUid, BigDecimal euroAmount, BigDecimal pointsReward, boolean isCustom) {
 
-  public static MerchantLoyaltyRateDto defaultForStore(Long storeId) {
+  public static MerchantLoyaltyRateDto defaultForStore(UUID storeUid) {
     return new MerchantLoyaltyRateDto(
-        storeId, new BigDecimal("1.00"), new BigDecimal("1.0"), false);
+        storeUid, new BigDecimal("1.00"), new BigDecimal("1.0"), false);
   }
 }

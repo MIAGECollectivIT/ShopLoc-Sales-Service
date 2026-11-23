@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,7 +54,7 @@ public class WalletController {
     @ApiResponse(responseCode = "403", description = "Forbidden")
   })
   public ResponseEntity<WalletResponse> getWallet(
-      @RequestParam(value = "userId", required = false) String requestedUserId,
+      @RequestParam(value = "userId", required = false) UUID requestedUserId,
       HttpServletRequest request) {
     String authenticatedUserId = resolveUserId(requestedUserId, request);
     return ResponseEntity.ok(walletService.getWallet(authenticatedUserId));
@@ -77,7 +78,7 @@ public class WalletController {
   public ResponseEntity<WalletResponse> reloadWallet(
       @Valid @RequestBody WalletReloadRequest reloadRequest,
       @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyHeader,
-      @RequestParam(value = "userId", required = false) String requestedUserId,
+      @RequestParam(value = "userId", required = false) UUID requestedUserId,
       HttpServletRequest request) {
     String authenticatedUserId = resolveUserId(requestedUserId, request);
     String idempotencyKey =
@@ -100,7 +101,7 @@ public class WalletController {
     @ApiResponse(responseCode = "403", description = "Forbidden")
   })
   public ResponseEntity<List<WalletTransactionResponse>> getTransactions(
-      @RequestParam(value = "userId", required = false) String requestedUserId,
+      @RequestParam(value = "userId", required = false) UUID requestedUserId,
       HttpServletRequest request) {
     String authenticatedUserId = resolveUserId(requestedUserId, request);
     return ResponseEntity.ok(walletService.getTransactions(authenticatedUserId));
@@ -120,21 +121,19 @@ public class WalletController {
   })
   public ResponseEntity<WalletResponse> debitWallet(
       @Valid @RequestBody WalletDebitRequest debitRequest,
-      @RequestParam(value = "userId", required = false) String requestedUserId,
+      @RequestParam(value = "userId", required = false) UUID requestedUserId,
       HttpServletRequest request) {
     String authenticatedUserId = resolveUserId(requestedUserId, request);
     return ResponseEntity.ok(walletService.debit(authenticatedUserId, debitRequest));
   }
 
-  private String resolveUserId(String requestedUserId, HttpServletRequest request) {
+  private String resolveUserId(UUID requestedUserId, HttpServletRequest request) {
     String authUserId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
     String authRole = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
 
     // Only administrators are permitted to query or operate on behalf of another user ID
-    if (UserRole.ADMIN.name().equalsIgnoreCase(authRole)
-        && requestedUserId != null
-        && !requestedUserId.isBlank()) {
-      return requestedUserId.trim();
+    if (UserRole.ADMIN.name().equalsIgnoreCase(authRole) && requestedUserId != null) {
+      return requestedUserId.toString();
     }
     // All other users are strictly bound to their authenticated token subject
     if (authUserId != null && !authUserId.isBlank()) {

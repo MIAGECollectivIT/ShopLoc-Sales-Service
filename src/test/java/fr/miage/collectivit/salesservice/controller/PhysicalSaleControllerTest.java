@@ -17,6 +17,7 @@ import fr.miage.collectivit.salesservice.security.JwtAuthInterceptor;
 import fr.miage.collectivit.salesservice.service.PhysicalSaleService;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,13 +50,17 @@ class PhysicalSaleControllerTest {
   @Test
   @DisplayName("POST /v1/sales/physical should return 201 Created for MERCHANT")
   void shouldRecordPhysicalSale() throws Exception {
+    UUID storeUid = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    UUID saleUid = UUID.fromString("99999999-9999-9999-9999-999999999999");
     PhysicalSaleRequest request =
-        new PhysicalSaleRequest(1L, "CLI-9999", "cust-1", new BigDecimal("25.00"), "EUR", "CARD");
+        new PhysicalSaleRequest(
+            storeUid, "CLI-9999", "cust-1", new BigDecimal("25.00"), "EUR", "CARD");
 
     PhysicalSaleResponse response =
         new PhysicalSaleResponse(
+            saleUid,
             "TX-PHYS-1234",
-            1L,
+            storeUid,
             "merchant-1",
             "CLI-9999",
             "cust-1",
@@ -78,16 +83,20 @@ class PhysicalSaleControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.uid").value(saleUid.toString()))
+        .andExpect(jsonPath("$.storeUid").value(storeUid.toString()))
         .andExpect(jsonPath("$.transactionReference").value("TX-PHYS-1234"));
   }
 
   @Test
   @DisplayName("GET /v1/sales/physical/{ref} should return 200 OK for owner merchant")
   void shouldAllowOwnerMerchantToViewPhysicalSale() throws Exception {
+    UUID storeUid = UUID.fromString("11111111-1111-1111-1111-111111111111");
     PhysicalSaleResponse response =
         new PhysicalSaleResponse(
+            UUID.randomUUID(),
             "TX-PHYS-1234",
-            1L,
+            storeUid,
             "merchant-1",
             "CLI-9999",
             "cust-1",
@@ -113,10 +122,12 @@ class PhysicalSaleControllerTest {
   @Test
   @DisplayName("GET /v1/sales/physical/{ref} should return 403 Forbidden for other merchant")
   void shouldDenyOtherMerchantAccess() throws Exception {
+    UUID storeUid = UUID.fromString("11111111-1111-1111-1111-111111111111");
     PhysicalSaleResponse response =
         new PhysicalSaleResponse(
+            UUID.randomUUID(),
             "TX-PHYS-1234",
-            1L,
+            storeUid,
             "merchant-1",
             "CLI-9999",
             "cust-1",
@@ -142,10 +153,12 @@ class PhysicalSaleControllerTest {
   @DisplayName(
       "GET /v1/sales/physical/{ref} should return 403 when customerId is null and caller is CLIENT")
   void shouldDenyClientWhenCustomerIdNull() throws Exception {
+    UUID storeUid = UUID.fromString("11111111-1111-1111-1111-111111111111");
     PhysicalSaleResponse response =
         new PhysicalSaleResponse(
+            UUID.randomUUID(),
             "TX-PHYS-1234",
-            1L,
+            storeUid,
             "merchant-1",
             "CLI-9999",
             null,

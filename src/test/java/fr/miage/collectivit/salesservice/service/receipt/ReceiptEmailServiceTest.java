@@ -72,7 +72,6 @@ class ReceiptEmailServiceTest {
 
     OrderResponse orderResponse =
         new OrderResponse(
-            1L,
             order.getUid(),
             orderRef,
             "user-1",
@@ -123,7 +122,6 @@ class ReceiptEmailServiceTest {
 
     OrderResponse orderResponse =
         new OrderResponse(
-            2L,
             order.getUid(),
             orderRef,
             "user-2",
@@ -172,7 +170,6 @@ class ReceiptEmailServiceTest {
 
     OrderResponse orderResponse =
         new OrderResponse(
-            3L,
             order.getUid(),
             orderRef,
             "user-3",

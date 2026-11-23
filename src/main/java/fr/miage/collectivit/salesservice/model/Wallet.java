@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -34,6 +35,9 @@ public class Wallet {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  @Column(name = "uid", nullable = false, unique = true, updatable = false)
+  private UUID uid;
 
   @Column(name = "user_id", nullable = false, unique = true, length = 64)
   private String userId;
@@ -58,6 +62,9 @@ public class Wallet {
   @PrePersist
   public void prePersist() {
     Instant now = Instant.now();
+    if (this.uid == null) {
+      this.uid = UUID.randomUUID();
+    }
     if (this.createdAt == null) {
       this.createdAt = now;
     }

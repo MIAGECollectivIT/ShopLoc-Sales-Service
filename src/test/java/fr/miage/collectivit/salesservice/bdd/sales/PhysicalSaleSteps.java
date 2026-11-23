@@ -55,21 +55,21 @@ public class PhysicalSaleSteps extends AbstractScenario {
     scenarioContext.setMockLoyaltyServer(mockServer);
   }
 
-  @Given("the store {long} has a loyalty rate of {double} EUR for {double} PTS")
-  public void givenStoreHasLoyaltyRate(Long storeId, Double euroAmount, Double pointsReward) {
-    String expectedUrl = LOYALTY_SERVICE_BASE_URL + "/v1/loyalty/merchants/" + storeId + "/rates";
+  @Given("the store {string} has a loyalty rate of {double} EUR for {double} PTS")
+  public void givenStoreHasLoyaltyRate(String storeUid, Double euroAmount, Double pointsReward) {
+    String expectedUrl = LOYALTY_SERVICE_BASE_URL + "/v1/loyalty/merchants/" + storeUid + "/rates";
     String jsonResponse =
         String.format(
             Locale.ROOT,
             """
             {
-              "storeId": %d,
+              "storeUid": "%s",
               "euroAmount": %.2f,
               "pointsReward": %.1f,
               "isCustom": true
             }
             """,
-            storeId,
+            storeUid,
             euroAmount,
             pointsReward);
 
@@ -80,9 +80,9 @@ public class PhysicalSaleSteps extends AbstractScenario {
         .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
   }
 
-  @Given("the loyalty service is unavailable with 503 for store {long}")
-  public void givenLoyaltyServiceIsUnavailableWith503(Long storeId) {
-    String expectedUrl = LOYALTY_SERVICE_BASE_URL + "/v1/loyalty/merchants/" + storeId + "/rates";
+  @Given("the loyalty service is unavailable with 503 for store {string}")
+  public void givenLoyaltyServiceIsUnavailableWith503(String storeUid) {
+    String expectedUrl = LOYALTY_SERVICE_BASE_URL + "/v1/loyalty/merchants/" + storeUid + "/rates";
     scenarioContext
         .getMockLoyaltyServer()
         .expect(ExpectedCount.manyTimes(), requestTo(expectedUrl))
@@ -91,22 +91,22 @@ public class PhysicalSaleSteps extends AbstractScenario {
   }
 
   @When(
-      "an in-store physical sale is recorded for store {long} client code {string} and amount {string}")
-  public void whenInStorePhysicalSaleIsRecorded(Long storeId, String clientCode, String amount)
+      "an in-store physical sale is recorded for store {string} client code {string} and amount {string}")
+  public void whenInStorePhysicalSaleIsRecorded(String storeUid, String clientCode, String amount)
       throws Exception {
     String payload =
         String.format(
             Locale.ROOT,
             """
             {
-              "storeId": %d,
+              "storeUid": "%s",
               "clientCode": "%s",
               "amount": %s,
               "currency": "EUR",
               "paymentMethod": "CASH"
             }
             """,
-            storeId,
+            storeUid,
             clientCode,
             amount);
 

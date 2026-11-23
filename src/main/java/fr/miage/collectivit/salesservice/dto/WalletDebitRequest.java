@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Schema(description = "Wallet debit request payload")
 public record WalletDebitRequest(
@@ -14,7 +15,10 @@ public record WalletDebitRequest(
         @DecimalMin(value = "0.01", message = "Le montant doit être supérieur à zéro")
         @Digits(integer = 8, fraction = 2, message = "Le montant ne doit pas dépasser 2 décimales")
         BigDecimal amount,
-    @Schema(description = "Merchant partner store ID", example = "1") Long storeId,
+    @Schema(
+            description = "Merchant partner store public UUID",
+            example = "11111111-1111-1111-1111-111111111111")
+        UUID storeUid,
     @Schema(description = "Merchant partner store name", example = "Boulangerie Le Moulin Doré")
         @Size(max = 255)
         String storeName,

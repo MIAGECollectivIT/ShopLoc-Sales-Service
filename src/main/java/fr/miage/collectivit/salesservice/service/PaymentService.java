@@ -65,6 +65,7 @@ public class PaymentService {
 
     PaymentTransaction transaction =
         PaymentTransaction.builder()
+            .uid(UUID.randomUUID())
             .transactionId(transactionId)
             .reference(request.reference().trim())
             .amount(request.amount())
@@ -83,7 +84,7 @@ public class PaymentService {
       transactionEventPublisher.publishTransactionApproved(
           new TransactionApprovedKafkaEvent(
               saved.getUserId(),
-              saved.getTransactionId(),
+              saved.getUid().toString(),
               saved.getReference(),
               amountValue,
               saved.getCurrency(),

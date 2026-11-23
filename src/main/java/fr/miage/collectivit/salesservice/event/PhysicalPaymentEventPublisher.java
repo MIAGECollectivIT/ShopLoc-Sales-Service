@@ -67,11 +67,11 @@ public class PhysicalPaymentEventPublisher {
       kafkaTemplate.send(topic, key, event);
       if (log.isInfoEnabled()) {
         log.info(
-            "Published physical payment event to Kafka topic {}: key={}, reference={}, storeId={}, amount={}",
+            "Published physical payment event to Kafka topic {}: key={}, reference={}, storeUid={}, amount={}",
             topic,
             key,
             event.transactionReference(),
-            event.storeId(),
+            event.storeUid(),
             event.amount());
       }
     } catch (Exception ex) {

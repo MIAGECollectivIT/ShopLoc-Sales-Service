@@ -28,22 +28,24 @@ class ReceiptPdfServiceTest {
   @Test
   @DisplayName("Should successfully generate a valid PDF document with %PDF magic header")
   void shouldGenerateValidPdfDocument() {
+    UUID storeUid1 = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    UUID storeUid2 = UUID.fromString("11111111-1111-1111-1111-111111111112");
     OrderItemResponse item1 =
         new OrderItemResponse(
-            10L,
-            1L,
+            UUID.randomUUID(),
+            storeUid1,
             "Boulangerie Le Moulin",
-            101L,
+            UUID.randomUUID(),
             "Pain au Chocolat",
             new BigDecimal("1.20"),
             3,
             new BigDecimal("3.60"));
     OrderItemResponse item2 =
         new OrderItemResponse(
-            11L,
-            2L,
+            UUID.randomUUID(),
+            storeUid2,
             "Boucherie Centrale",
-            201L,
+            UUID.randomUUID(),
             "Steak Haché Bio",
             new BigDecimal("4.50"),
             2,
@@ -51,14 +53,13 @@ class ReceiptPdfServiceTest {
 
     OrderStoreSummaryResponse store1 =
         new OrderStoreSummaryResponse(
-            1L, "Boulangerie Le Moulin", new BigDecimal("3.60"), 3, List.of(item1));
+            storeUid1, "Boulangerie Le Moulin", new BigDecimal("3.60"), 3, List.of(item1));
     OrderStoreSummaryResponse store2 =
         new OrderStoreSummaryResponse(
-            2L, "Boucherie Centrale", new BigDecimal("9.00"), 2, List.of(item2));
+            storeUid2, "Boucherie Centrale", new BigDecimal("9.00"), 2, List.of(item2));
 
     OrderResponse order =
         new OrderResponse(
-            1L,
             UUID.randomUUID(),
             "CMD-CC-20261113-4412",
             "user-123",
@@ -96,7 +97,6 @@ class ReceiptPdfServiceTest {
   void shouldHandleOrdersWithMissingFields() {
     OrderResponse minimalOrder =
         new OrderResponse(
-            2L,
             UUID.randomUUID(),
             "CMD-CC-20261113-0001",
             "user-456",

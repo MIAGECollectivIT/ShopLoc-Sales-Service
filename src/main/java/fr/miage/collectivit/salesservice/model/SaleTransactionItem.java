@@ -12,6 +12,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -35,13 +36,16 @@ public class SaleTransactionItem {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  @Column(name = "uid", nullable = false, unique = true, updatable = false)
+  private UUID uid;
+
   @JsonIgnore
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "sale_id", nullable = false)
   private SaleTransaction saleTransaction;
 
-  @Column(name = "product_id")
-  private Long productId;
+  @Column(name = "product_uid")
+  private UUID productUid;
 
   @Column(name = "product_name", nullable = false)
   private String productName;
@@ -57,6 +61,9 @@ public class SaleTransactionItem {
 
   @PrePersist
   protected void onPersist() {
+    if (this.uid == null) {
+      this.uid = UUID.randomUUID();
+    }
     if (this.totalPrice == null && this.unitPrice != null && this.quantity != null) {
       this.totalPrice = this.unitPrice.multiply(BigDecimal.valueOf(this.quantity));
     }

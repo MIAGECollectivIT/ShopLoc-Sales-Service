@@ -53,6 +53,9 @@ class OrderControllerTest {
   private MockMvc mockMvc;
   private ObjectMapper objectMapper;
 
+  private static final UUID STORE_UID_1 = UUID.fromString("11111111-1111-1111-1111-111111111111");
+  private static final UUID PRODUCT_UID_2 = UUID.fromString("22222222-2222-2222-2222-222222222222");
+
   @BeforeEach
   void setUp() {
     mockMvc =
@@ -69,20 +72,28 @@ class OrderControllerTest {
   @DisplayName("POST /v1/sales/orders should create order and return 201 Created")
   void shouldCreateOrderSuccessfully() throws Exception {
     CreateOrderItemRequest item1 =
-        new CreateOrderItemRequest(1L, "Le Moulin", 2L, "Baguette", new BigDecimal("1.35"), 2);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Le Moulin", PRODUCT_UID_2, "Baguette", new BigDecimal("1.35"), 2);
     CreateOrderRequest request =
         new CreateOrderRequest(List.of(item1), "CLI-123", "client@test.fr");
 
     OrderItemResponse itemResp =
         new OrderItemResponse(
-            1L, 1L, "Le Moulin", 2L, "Baguette", new BigDecimal("1.35"), 2, new BigDecimal("2.70"));
+            UUID.randomUUID(),
+            STORE_UID_1,
+            "Le Moulin",
+            PRODUCT_UID_2,
+            "Baguette",
+            new BigDecimal("1.35"),
+            2,
+            new BigDecimal("2.70"));
     OrderStoreSummaryResponse storeSummary =
         new OrderStoreSummaryResponse(
-            1L, "Le Moulin", new BigDecimal("2.70"), 2, List.of(itemResp));
+            STORE_UID_1, "Le Moulin", new BigDecimal("2.70"), 2, List.of(itemResp));
 
     OrderResponse response =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -103,9 +114,11 @@ class OrderControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.uid").isNotEmpty())
         .andExpect(jsonPath("$.orderReference").value("CMD-CC-20261110-9999"))
         .andExpect(jsonPath("$.status").value("PENDING_PAYMENT"))
         .andExpect(jsonPath("$.totalAmount").value(2.70))
+        .andExpect(jsonPath("$.storeSummaries[0].storeUid").value(STORE_UID_1.toString()))
         .andExpect(jsonPath("$.storeSummaries[0].storeName").value("Le Moulin"))
         .andExpect(jsonPath("$.storeSummaries[0].subtotal").value(2.70));
   }
@@ -128,7 +141,8 @@ class OrderControllerTest {
   @DisplayName("POST /v1/sales/orders should return 400 Bad Request when unit price is invalid")
   void shouldReturn400WhenPriceInvalid() throws Exception {
     CreateOrderItemRequest invalidItem =
-        new CreateOrderItemRequest(1L, "Store", 2L, "Product", new BigDecimal("-1.00"), 1);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Store", PRODUCT_UID_2, "Product", new BigDecimal("-1.00"), 1);
     CreateOrderRequest request = new CreateOrderRequest(List.of(invalidItem), null, null);
 
     mockMvc
@@ -144,7 +158,7 @@ class OrderControllerTest {
   void shouldGetOrderByReference() throws Exception {
     OrderResponse response =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -175,7 +189,7 @@ class OrderControllerTest {
   void shouldReturn403WhenClientAccessesAnotherOrder() throws Exception {
     OrderResponse response =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-other",
             "other@test.fr",
@@ -205,7 +219,7 @@ class OrderControllerTest {
   void shouldGetOrderByReferenceForAdmin() throws Exception {
     OrderResponse response =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-other",
             "other@test.fr",
@@ -234,7 +248,7 @@ class OrderControllerTest {
   void shouldListOrdersForCaller() throws Exception {
     OrderResponse response =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -278,7 +292,7 @@ class OrderControllerTest {
 
     OrderResponse response =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -313,7 +327,7 @@ class OrderControllerTest {
 
     OrderResponse existingOrder =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -328,7 +342,7 @@ class OrderControllerTest {
 
     OrderResponse paidOrder =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -365,7 +379,7 @@ class OrderControllerTest {
 
     OrderResponse existingOrder =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -404,7 +418,7 @@ class OrderControllerTest {
 
     OrderResponse existingOrder =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -419,7 +433,7 @@ class OrderControllerTest {
 
     OrderResponse cancelledOrder =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -456,7 +470,7 @@ class OrderControllerTest {
 
     OrderResponse paidOrder =
         new OrderResponse(
-            10L,
+            UUID.randomUUID(),
             "CMD-CC-20261110-9999",
             "cust-1",
             "client@test.fr",
@@ -504,10 +518,11 @@ class OrderControllerTest {
   }
 
   @Test
-  @DisplayName("POST /v1/sales/orders should return 400 Bad Request when storeId is null")
-  void shouldReturn400WhenStoreIdNull() throws Exception {
+  @DisplayName("POST /v1/sales/orders should return 400 Bad Request when storeUid is null")
+  void shouldReturn400WhenStoreUidNull() throws Exception {
     CreateOrderItemRequest invalidItem =
-        new CreateOrderItemRequest(null, "Store", 2L, "Product", new BigDecimal("5.00"), 1);
+        new CreateOrderItemRequest(
+            null, "Store", PRODUCT_UID_2, "Product", new BigDecimal("5.00"), 1);
     CreateOrderRequest request = new CreateOrderRequest(List.of(invalidItem), null, null);
 
     mockMvc
@@ -520,10 +535,11 @@ class OrderControllerTest {
   }
 
   @Test
-  @DisplayName("POST /v1/sales/orders should return 400 Bad Request when productId is null")
-  void shouldReturn400WhenProductIdNull() throws Exception {
+  @DisplayName("POST /v1/sales/orders should return 400 Bad Request when productUid is null")
+  void shouldReturn400WhenProductUidNull() throws Exception {
     CreateOrderItemRequest invalidItem =
-        new CreateOrderItemRequest(1L, "Store", null, "Product", new BigDecimal("5.00"), 1);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Store", null, "Product", new BigDecimal("5.00"), 1);
     CreateOrderRequest request = new CreateOrderRequest(List.of(invalidItem), null, null);
 
     mockMvc
@@ -539,7 +555,8 @@ class OrderControllerTest {
   @DisplayName("POST /v1/sales/orders should return 400 Bad Request when productName is blank")
   void shouldReturn400WhenProductNameBlank() throws Exception {
     CreateOrderItemRequest invalidItem =
-        new CreateOrderItemRequest(1L, "Store", 2L, "   ", new BigDecimal("5.00"), 1);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Store", PRODUCT_UID_2, "   ", new BigDecimal("5.00"), 1);
     CreateOrderRequest request = new CreateOrderRequest(List.of(invalidItem), null, null);
 
     mockMvc
@@ -570,7 +587,6 @@ class OrderControllerTest {
     String ref = "CMD-CC-20261113-1111";
     OrderResponse paidOrder =
         new OrderResponse(
-            1L,
             UUID.randomUUID(),
             ref,
             "user-10",
@@ -610,7 +626,6 @@ class OrderControllerTest {
     String ref = "CMD-CC-20261113-3333";
     OrderResponse completedOrder =
         new OrderResponse(
-            3L,
             UUID.randomUUID(),
             ref,
             "user-10",
@@ -651,7 +666,6 @@ class OrderControllerTest {
     String ref = "CMD-CC-20261113-2222";
     OrderResponse pendingOrder =
         new OrderResponse(
-            2L,
             UUID.randomUUID(),
             ref,
             "user-10",
@@ -684,7 +698,6 @@ class OrderControllerTest {
     String ref = "CMD-CC-20261113-3333";
     OrderResponse paidOrder =
         new OrderResponse(
-            3L,
             UUID.randomUUID(),
             ref,
             "user-10",
@@ -716,7 +729,6 @@ class OrderControllerTest {
     String ref = "CMD-CC-20261113-4444";
     OrderResponse paidOrder =
         new OrderResponse(
-            4L,
             UUID.randomUUID(),
             ref,
             "user-10",

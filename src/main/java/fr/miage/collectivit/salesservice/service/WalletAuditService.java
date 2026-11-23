@@ -47,6 +47,7 @@ public class WalletAuditService {
                   () ->
                       walletRepository.save(
                           Wallet.builder()
+                              .uid(UUID.randomUUID())
                               .userId(trimmedUserId)
                               .balance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
                               .currency("EUR")
@@ -73,6 +74,7 @@ public class WalletAuditService {
 
       WalletTransaction failedTx =
           WalletTransaction.builder()
+              .uid(UUID.randomUUID())
               .wallet(wallet)
               .userId(trimmedUserId)
               .transactionReference(txRef)

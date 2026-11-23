@@ -3,12 +3,20 @@ package fr.miage.collectivit.salesservice.dto;
 import fr.miage.collectivit.salesservice.model.PhysicalSaleTransaction;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Schema(description = "In-store physical checkout transaction confirmation response")
 public record PhysicalSaleResponse(
+    @Schema(
+            description = "Unique public UUID identifier of the physical sale",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+        UUID uid,
     @Schema(description = "Unique transaction reference", example = "PHYS-20261110-A1B2C3")
         String transactionReference,
-    @Schema(description = "Store identifier", example = "10") Long storeId,
+    @Schema(
+            description = "Store public UUID identifier",
+            example = "11111111-1111-1111-1111-111111111111")
+        UUID storeUid,
     @Schema(description = "Merchant user identifier", example = "merchant_user_123")
         String merchantId,
     @Schema(description = "Customer loyalty code", example = "k7P9xQ2") String clientCode,
@@ -31,8 +39,9 @@ public record PhysicalSaleResponse(
 
   public static PhysicalSaleResponse fromEntity(PhysicalSaleTransaction entity) {
     return new PhysicalSaleResponse(
+        entity.getUid(),
         entity.getTransactionReference(),
-        entity.getStoreId(),
+        entity.getStoreUid(),
         entity.getMerchantId(),
         entity.getClientCode(),
         entity.getCustomerId(),

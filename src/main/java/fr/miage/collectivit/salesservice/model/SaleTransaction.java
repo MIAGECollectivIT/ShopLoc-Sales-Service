@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -50,11 +51,14 @@ public class SaleTransaction {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  @Column(name = "uid", nullable = false, unique = true, updatable = false)
+  private UUID uid;
+
   @Column(name = "transaction_reference", nullable = false, unique = true, length = 64)
   private String transactionReference;
 
-  @Column(name = "store_id", nullable = false)
-  private Long storeId;
+  @Column(name = "store_uid")
+  private UUID storeUid;
 
   @Column(name = "client_code", length = 32)
   private String clientCode;
@@ -86,6 +90,9 @@ public class SaleTransaction {
 
   @PrePersist
   protected void onCreate() {
+    if (this.uid == null) {
+      this.uid = UUID.randomUUID();
+    }
     if (this.createdAt == null) {
       this.createdAt = Instant.now();
     }

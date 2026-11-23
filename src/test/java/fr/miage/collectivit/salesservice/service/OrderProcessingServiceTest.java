@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,23 @@ class OrderProcessingServiceTest {
   @Mock private ApplicationEventPublisher applicationEventPublisher;
   @Mock private PaymentTransactionRepository paymentTransactionRepository;
   @Mock private WalletTransactionRepository walletTransactionRepository;
+
+  private static final UUID STORE_UID_1 = UUID.fromString("11111111-1111-1111-1111-111111111001");
+  private static final UUID STORE_UID_2 = UUID.fromString("11111111-1111-1111-1111-111111111002");
+  private static final UUID STORE_UID_10 = UUID.fromString("11111111-1111-1111-1111-111111111010");
+  private static final UUID STORE_UID_20 = UUID.fromString("11111111-1111-1111-1111-111111111020");
+  private static final UUID STORE_UID_99 = UUID.fromString("11111111-1111-1111-1111-111111111099");
+
+  private static final UUID PRODUCT_UID_1 = UUID.fromString("22222222-2222-2222-2222-222222222001");
+  private static final UUID PRODUCT_UID_2 = UUID.fromString("22222222-2222-2222-2222-222222222002");
+  private static final UUID PRODUCT_UID_3 = UUID.fromString("22222222-2222-2222-2222-222222222003");
+  private static final UUID PRODUCT_UID_6 = UUID.fromString("22222222-2222-2222-2222-222222222006");
+  private static final UUID PRODUCT_UID_10 =
+      UUID.fromString("22222222-2222-2222-2222-222222222010");
+  private static final UUID PRODUCT_UID_101 =
+      UUID.fromString("22222222-2222-2222-2222-222222222101");
+  private static final UUID PRODUCT_UID_102 =
+      UUID.fromString("22222222-2222-2222-2222-222222222102");
 
   private OrderProcessingService orderProcessingService;
 
@@ -69,20 +87,38 @@ class OrderProcessingServiceTest {
   void shouldCreateOrderSuccessfully() {
     CreateOrderItemRequest item1 =
         new CreateOrderItemRequest(
-            1L, "Boulangerie Le Moulin", 2L, "Baguette de Tradition", new BigDecimal("1.35"), 2);
+            STORE_UID_1,
+            "Boulangerie Le Moulin",
+            PRODUCT_UID_2,
+            "Baguette de Tradition",
+            new BigDecimal("1.35"),
+            2);
     CreateOrderItemRequest item2 =
         new CreateOrderItemRequest(
-            1L, "Boulangerie Le Moulin", 3L, "Croissant Pur Beurre", new BigDecimal("1.60"), 1);
+            STORE_UID_1,
+            "Boulangerie Le Moulin",
+            PRODUCT_UID_3,
+            "Croissant Pur Beurre",
+            new BigDecimal("1.60"),
+            1);
     CreateOrderItemRequest item3 =
         new CreateOrderItemRequest(
-            2L, "Librairie Le Furet", 6L, "Roman Best-Seller", new BigDecimal("22.00"), 1);
+            STORE_UID_2,
+            "Librairie Le Furet",
+            PRODUCT_UID_6,
+            "Roman Best-Seller",
+            new BigDecimal("22.00"),
+            1);
 
     CreateOrderRequest request =
         new CreateOrderRequest(List.of(item1, item2, item3), "CLI-99482", "client@example.com");
 
-    when(storeClient.getProductPrice(1L, 2L)).thenReturn(Optional.of(new BigDecimal("1.35")));
-    when(storeClient.getProductPrice(1L, 3L)).thenReturn(Optional.of(new BigDecimal("1.60")));
-    when(storeClient.getProductPrice(2L, 6L)).thenReturn(Optional.of(new BigDecimal("22.00")));
+    when(storeClient.getProductPrice(STORE_UID_1, PRODUCT_UID_2))
+        .thenReturn(Optional.of(new BigDecimal("1.35")));
+    when(storeClient.getProductPrice(STORE_UID_1, PRODUCT_UID_3))
+        .thenReturn(Optional.of(new BigDecimal("1.60")));
+    when(storeClient.getProductPrice(STORE_UID_2, PRODUCT_UID_6))
+        .thenReturn(Optional.of(new BigDecimal("22.00")));
 
     when(orderRepository.save(any(Order.class)))
         .thenAnswer(
@@ -96,7 +132,7 @@ class OrderProcessingServiceTest {
         orderProcessingService.createOrder(request, "user-42", "auth@example.com", "CLI-JWT-42");
 
     assertThat(response).isNotNull();
-    assertThat(response.id()).isEqualTo(101L);
+    assertThat(response.uid()).isNotNull();
     assertThat(response.orderReference()).startsWith("CMD-CC-");
     assertThat(response.status()).isEqualTo(OrderStatus.PENDING_PAYMENT.name());
     // Total calculation: (1.35 * 2) + (1.60 * 1) + (22.00 * 1) = 2.70 + 1.60 + 22.00 = 26.30
@@ -113,7 +149,7 @@ class OrderProcessingServiceTest {
     // Store 1 breakdown
     var store1 =
         response.storeSummaries().stream()
-            .filter(s -> s.storeId().equals(1L))
+            .filter(s -> s.storeUid().equals(STORE_UID_1))
             .findFirst()
             .orElseThrow();
     assertThat(store1.storeName()).isEqualTo("Boulangerie Le Moulin");
@@ -124,7 +160,7 @@ class OrderProcessingServiceTest {
     // Store 2 breakdown
     var store2 =
         response.storeSummaries().stream()
-            .filter(s -> s.storeId().equals(2L))
+            .filter(s -> s.storeUid().equals(STORE_UID_2))
             .findFirst()
             .orElseThrow();
     assertThat(store2.storeName()).isEqualTo("Librairie Le Furet");
@@ -138,9 +174,9 @@ class OrderProcessingServiceTest {
     assertThat(captured.getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
     assertThat(captured.getItems()).hasSize(3);
 
-    verify(storeClient).updateStock(1L, 2L, -2);
-    verify(storeClient).updateStock(1L, 3L, -1);
-    verify(storeClient).updateStock(2L, 6L, -1);
+    verify(storeClient).updateStock(STORE_UID_1, PRODUCT_UID_2, -2);
+    verify(storeClient).updateStock(STORE_UID_1, PRODUCT_UID_3, -1);
+    verify(storeClient).updateStock(STORE_UID_2, PRODUCT_UID_6, -1);
   }
 
   @Test
@@ -159,6 +195,7 @@ class OrderProcessingServiceTest {
     Order order =
         Order.builder()
             .id(50L)
+            .uid(UUID.randomUUID())
             .orderReference("CMD-CC-20261110-1234")
             .customerId("user-1")
             .customerEmail("client@example.com")
@@ -174,9 +211,10 @@ class OrderProcessingServiceTest {
     OrderItem item =
         OrderItem.builder()
             .id(1L)
-            .storeId(1L)
+            .uid(UUID.randomUUID())
+            .storeUid(STORE_UID_1)
             .storeName("Le Moulin")
-            .productId(2L)
+            .productUid(PRODUCT_UID_2)
             .productName("Pain")
             .unitPrice(new BigDecimal("15.50"))
             .quantity(1)
@@ -238,9 +276,9 @@ class OrderProcessingServiceTest {
   void shouldPublishKafkaOrderPaidEventWhenStatusChangesToPaid() {
     OrderItem item1 =
         OrderItem.builder()
-            .storeId(10L)
+            .storeUid(STORE_UID_10)
             .storeName("Boulangerie")
-            .productId(1L)
+            .productUid(PRODUCT_UID_1)
             .productName("Pain")
             .quantity(2)
             .unitPrice(new BigDecimal("1.50"))
@@ -248,9 +286,9 @@ class OrderProcessingServiceTest {
             .build();
     OrderItem item2 =
         OrderItem.builder()
-            .storeId(20L)
+            .storeUid(STORE_UID_20)
             .storeName("Boucherie")
-            .productId(2L)
+            .productUid(PRODUCT_UID_2)
             .productName("Steak")
             .quantity(1)
             .unitPrice(new BigDecimal("12.00"))
@@ -258,9 +296,9 @@ class OrderProcessingServiceTest {
             .build();
     OrderItem item3 =
         OrderItem.builder()
-            .storeId(10L)
+            .storeUid(STORE_UID_10)
             .storeName("Boulangerie")
-            .productId(3L)
+            .productUid(PRODUCT_UID_3)
             .productName("Croissant")
             .quantity(2)
             .unitPrice(new BigDecimal("1.00"))
@@ -296,12 +334,18 @@ class OrderProcessingServiceTest {
     assertThat(captured.stores()).hasSize(2);
 
     var store10 =
-        captured.stores().stream().filter(s -> s.storeId().equals(10L)).findFirst().orElseThrow();
+        captured.stores().stream()
+            .filter(s -> s.storeUid().equals(STORE_UID_10))
+            .findFirst()
+            .orElseThrow();
     assertThat(store10.storeName()).isEqualTo("Boulangerie");
     assertThat(store10.amount()).isEqualByComparingTo(new BigDecimal("5.00"));
 
     var store20 =
-        captured.stores().stream().filter(s -> s.storeId().equals(20L)).findFirst().orElseThrow();
+        captured.stores().stream()
+            .filter(s -> s.storeUid().equals(STORE_UID_20))
+            .findFirst()
+            .orElseThrow();
     assertThat(store20.storeName()).isEqualTo("Boucherie");
     assertThat(store20.amount()).isEqualByComparingTo(new BigDecimal("12.00"));
   }
@@ -324,8 +368,8 @@ class OrderProcessingServiceTest {
   void shouldTransitionOrderStatusToCancelledAndExpired() {
     OrderItem item =
         OrderItem.builder()
-            .storeId(1L)
-            .productId(10L)
+            .storeUid(STORE_UID_1)
+            .productUid(PRODUCT_UID_10)
             .productName("Item")
             .quantity(3)
             .unitPrice(new BigDecimal("5.00"))
@@ -343,7 +387,7 @@ class OrderProcessingServiceTest {
 
     OrderResponse cancelled = orderProcessingService.updateOrderStatus("CMD-CC-2", "CANCELLED");
     assertThat(cancelled.status()).isEqualTo("CANCELLED");
-    verify(storeClient).updateStock(1L, 10L, 3);
+    verify(storeClient).updateStock(STORE_UID_1, PRODUCT_UID_10, 3);
 
     Order order2 =
         Order.builder()
@@ -381,11 +425,12 @@ class OrderProcessingServiceTest {
   void shouldRejectOrderCreationWhenPriceMismatched() {
     CreateOrderItemRequest tamperedItem =
         new CreateOrderItemRequest(
-            1L, "Store 1", 10L, "Expensive Product", new BigDecimal("0.01"), 1);
+            STORE_UID_1, "Store 1", PRODUCT_UID_10, "Expensive Product", new BigDecimal("0.01"), 1);
     CreateOrderRequest request =
         new CreateOrderRequest(List.of(tamperedItem), "CLI-1", "test@test.fr");
 
-    when(storeClient.getProductPrice(1L, 10L)).thenReturn(Optional.of(new BigDecimal("59.99")));
+    when(storeClient.getProductPrice(STORE_UID_1, PRODUCT_UID_10))
+        .thenReturn(Optional.of(new BigDecimal("59.99")));
 
     assertThatThrownBy(() -> orderProcessingService.createOrder(request, "cust-1", "test@test.fr"))
         .isInstanceOf(IllegalArgumentException.class)
@@ -396,7 +441,8 @@ class OrderProcessingServiceTest {
   @DisplayName("Should reject order creation when unit price is null or non-positive")
   void shouldRejectOrderCreationWhenUnitPriceNonPositive() {
     CreateOrderItemRequest zeroPriceItem =
-        new CreateOrderItemRequest(1L, "Store 1", 10L, "Free Product", BigDecimal.ZERO, 1);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Store 1", PRODUCT_UID_10, "Free Product", BigDecimal.ZERO, 1);
     CreateOrderRequest request =
         new CreateOrderRequest(List.of(zeroPriceItem), "CLI-1", "test@test.fr");
 
@@ -409,37 +455,43 @@ class OrderProcessingServiceTest {
   @DisplayName("Should rollback previously reserved items when subsequent reservation fails")
   void shouldRollbackStockWhenReservationFails() {
     CreateOrderItemRequest item1 =
-        new CreateOrderItemRequest(1L, "Store 1", 101L, "P1", new BigDecimal("5.00"), 2);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Store 1", PRODUCT_UID_101, "P1", new BigDecimal("5.00"), 2);
     CreateOrderItemRequest item2 =
-        new CreateOrderItemRequest(1L, "Store 1", 102L, "P2", new BigDecimal("10.00"), 1);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Store 1", PRODUCT_UID_102, "P2", new BigDecimal("10.00"), 1);
 
     CreateOrderRequest request = new CreateOrderRequest(List.of(item1, item2), "CLI-1", null);
 
-    when(storeClient.getProductPrice(1L, 101L)).thenReturn(Optional.of(new BigDecimal("5.00")));
-    when(storeClient.getProductPrice(1L, 102L)).thenReturn(Optional.of(new BigDecimal("10.00")));
-    doNothing().when(storeClient).updateStock(1L, 101L, -2);
-    doNothing().when(storeClient).updateStock(1L, 101L, 2);
+    when(storeClient.getProductPrice(STORE_UID_1, PRODUCT_UID_101))
+        .thenReturn(Optional.of(new BigDecimal("5.00")));
+    when(storeClient.getProductPrice(STORE_UID_1, PRODUCT_UID_102))
+        .thenReturn(Optional.of(new BigDecimal("10.00")));
+    doNothing().when(storeClient).updateStock(STORE_UID_1, PRODUCT_UID_101, -2);
+    doNothing().when(storeClient).updateStock(STORE_UID_1, PRODUCT_UID_101, 2);
     doThrow(new RuntimeException("Insufficient stock on P2"))
         .when(storeClient)
-        .updateStock(1L, 102L, -1);
+        .updateStock(STORE_UID_1, PRODUCT_UID_102, -1);
 
     assertThatThrownBy(() -> orderProcessingService.createOrder(request, "user-1", "user@test.fr"))
         .isInstanceOf(RuntimeException.class)
         .hasMessageContaining("Insufficient stock on P2");
 
     // item1 was reserved (-2), then rolled back (+2)
-    verify(storeClient).updateStock(1L, 101L, -2);
-    verify(storeClient).updateStock(1L, 101L, 2);
+    verify(storeClient).updateStock(STORE_UID_1, PRODUCT_UID_101, -2);
+    verify(storeClient).updateStock(STORE_UID_1, PRODUCT_UID_101, 2);
   }
 
   @Test
   @DisplayName("Should fallback to payload customerEmail when authenticated email is null or blank")
   void shouldFallbackToPayloadEmail() {
     CreateOrderItemRequest item =
-        new CreateOrderItemRequest(1L, "Store", 2L, "Product", new BigDecimal("10.00"), 1);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Store", PRODUCT_UID_2, "Product", new BigDecimal("10.00"), 1);
     CreateOrderRequest request = new CreateOrderRequest(List.of(item), null, "guest@fallback.com");
 
-    when(storeClient.getProductPrice(1L, 2L)).thenReturn(Optional.of(new BigDecimal("10.00")));
+    when(storeClient.getProductPrice(STORE_UID_1, PRODUCT_UID_2))
+        .thenReturn(Optional.of(new BigDecimal("10.00")));
     when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
 
     OrderResponse response = orderProcessingService.createOrder(request, null, "   ");
@@ -452,10 +504,11 @@ class OrderProcessingServiceTest {
   @DisplayName("Should fail closed when Store Service cannot verify product price")
   void shouldFailClosedWhenStorePriceUnavailable() {
     CreateOrderItemRequest item =
-        new CreateOrderItemRequest(1L, "Store", 2L, "Product", new BigDecimal("10.00"), 1);
+        new CreateOrderItemRequest(
+            STORE_UID_1, "Store", PRODUCT_UID_2, "Product", new BigDecimal("10.00"), 1);
     CreateOrderRequest request = new CreateOrderRequest(List.of(item), null, "client@test.fr");
 
-    when(storeClient.getProductPrice(1L, 2L)).thenReturn(Optional.empty());
+    when(storeClient.getProductPrice(STORE_UID_1, PRODUCT_UID_2)).thenReturn(Optional.empty());
 
     assertThatThrownBy(
             () -> orderProcessingService.createOrder(request, "cust-1", "client@test.fr", "CLI-1"))
@@ -513,10 +566,11 @@ class OrderProcessingServiceTest {
   @DisplayName("Should reject MERCHANT access when merchant does not own any store in the order")
   void shouldRejectMerchantNotOwningOrderStore() {
     OrderStoreSummaryResponse summary =
-        new OrderStoreSummaryResponse(99L, "Other Store", new BigDecimal("10.00"), 1, List.of());
+        new OrderStoreSummaryResponse(
+            STORE_UID_99, "Other Store", new BigDecimal("10.00"), 1, List.of());
     OrderResponse order =
         new OrderResponse(
-            1L,
+            UUID.randomUUID(),
             "CMD-CC-IDOR",
             "cust-1",
             "client@test.fr",
@@ -528,7 +582,8 @@ class OrderProcessingServiceTest {
             Instant.now(),
             List.of(summary),
             List.of());
-    when(storeClient.getMerchantStoreIds("merchant-jwt")).thenReturn(Set.of(1L, 2L));
+    when(storeClient.getMerchantStoreUids("merchant-jwt"))
+        .thenReturn(Set.of(STORE_UID_1, STORE_UID_2));
 
     assertThatThrownBy(
             () -> orderProcessingService.verifyMerchantOwnsOrderStore(order, "merchant-jwt"))

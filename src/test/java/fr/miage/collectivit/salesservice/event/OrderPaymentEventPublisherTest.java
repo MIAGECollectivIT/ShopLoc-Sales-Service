@@ -13,6 +13,7 @@ import fr.miage.collectivit.salesservice.dto.event.StoreOrderBreakdown;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,9 +37,9 @@ class OrderPaymentEventPublisherTest {
   @DisplayName("Should publish order paid event with clientCode as partition key")
   void shouldPublishEventWithClientCodeKey() {
     StoreOrderBreakdown breakdown1 =
-        new StoreOrderBreakdown(10L, "Boulangerie", new BigDecimal("15.00"));
+        new StoreOrderBreakdown(UUID.randomUUID(), "Boulangerie", new BigDecimal("15.00"));
     StoreOrderBreakdown breakdown2 =
-        new StoreOrderBreakdown(20L, "Librairie", new BigDecimal("25.00"));
+        new StoreOrderBreakdown(UUID.randomUUID(), "Librairie", new BigDecimal("25.00"));
 
     OrderPaidKafkaEvent event =
         new OrderPaidKafkaEvent(
@@ -59,7 +60,7 @@ class OrderPaymentEventPublisherTest {
   @DisplayName("Should fallback to orderReference as key when clientCode is blank")
   void shouldFallbackToOrderReferenceWhenClientCodeIsBlank() {
     StoreOrderBreakdown breakdown =
-        new StoreOrderBreakdown(10L, "Boulangerie", new BigDecimal("15.00"));
+        new StoreOrderBreakdown(UUID.randomUUID(), "Boulangerie", new BigDecimal("15.00"));
 
     OrderPaidKafkaEvent event =
         new OrderPaidKafkaEvent(
