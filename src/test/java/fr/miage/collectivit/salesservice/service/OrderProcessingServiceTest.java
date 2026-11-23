@@ -12,16 +12,25 @@ import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.dto.CreateOrderItemRequest;
 import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
+import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
+import fr.miage.collectivit.salesservice.dto.event.OrderPaidKafkaEvent;
+import fr.miage.collectivit.salesservice.exception.ForbiddenException;
 import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
+import fr.miage.collectivit.salesservice.exception.StoreServiceUnavailableException;
 import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.model.OrderItem;
 import fr.miage.collectivit.salesservice.model.OrderStatus;
+import fr.miage.collectivit.salesservice.model.WalletTransactionType;
 import fr.miage.collectivit.salesservice.repository.OrderRepository;
+import fr.miage.collectivit.salesservice.repository.PaymentTransactionRepository;
+import fr.miage.collectivit.salesservice.repository.WalletTransactionRepository;
+import fr.miage.collectivit.salesservice.service.receipt.OrderPaidEvent;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,13 +47,20 @@ class OrderProcessingServiceTest {
   @Mock private OrderRepository orderRepository;
   @Mock private StoreClient storeClient;
   @Mock private ApplicationEventPublisher applicationEventPublisher;
+  @Mock private PaymentTransactionRepository paymentTransactionRepository;
+  @Mock private WalletTransactionRepository walletTransactionRepository;
 
   private OrderProcessingService orderProcessingService;
 
   @BeforeEach
   void setUp() {
     orderProcessingService =
-        new OrderProcessingService(orderRepository, storeClient, applicationEventPublisher);
+        new OrderProcessingService(
+            orderRepository,
+            storeClient,
+            applicationEventPublisher,
+            paymentTransactionRepository,
+            walletTransactionRepository);
   }
 
   @Test
@@ -64,6 +80,10 @@ class OrderProcessingServiceTest {
     CreateOrderRequest request =
         new CreateOrderRequest(List.of(item1, item2, item3), "CLI-99482", "client@example.com");
 
+    when(storeClient.getProductPrice(1L, 2L)).thenReturn(Optional.of(new BigDecimal("1.35")));
+    when(storeClient.getProductPrice(1L, 3L)).thenReturn(Optional.of(new BigDecimal("1.60")));
+    when(storeClient.getProductPrice(2L, 6L)).thenReturn(Optional.of(new BigDecimal("22.00")));
+
     when(orderRepository.save(any(Order.class)))
         .thenAnswer(
             invocation -> {
@@ -73,7 +93,7 @@ class OrderProcessingServiceTest {
             });
 
     OrderResponse response =
-        orderProcessingService.createOrder(request, "user-42", "auth@example.com");
+        orderProcessingService.createOrder(request, "user-42", "auth@example.com", "CLI-JWT-42");
 
     assertThat(response).isNotNull();
     assertThat(response.id()).isEqualTo(101L);
@@ -85,6 +105,7 @@ class OrderProcessingServiceTest {
     assertThat(response.expiresAt()).isAfter(Instant.now());
     assertThat(response.customerId()).isEqualTo("user-42");
     assertThat(response.customerEmail()).isEqualTo("auth@example.com");
+    assertThat(response.clientCode()).isEqualTo("CLI-JWT-42");
 
     // Store summaries check
     assertThat(response.storeSummaries()).hasSize(2);
@@ -212,6 +233,80 @@ class OrderProcessingServiceTest {
   }
 
   @Test
+  @DisplayName(
+      "Should publish Kafka order paid event with store breakdowns when status changes to PAID (SLE-220)")
+  void shouldPublishKafkaOrderPaidEventWhenStatusChangesToPaid() {
+    OrderItem item1 =
+        OrderItem.builder()
+            .storeId(10L)
+            .storeName("Boulangerie")
+            .productId(1L)
+            .productName("Pain")
+            .quantity(2)
+            .unitPrice(new BigDecimal("1.50"))
+            .totalPrice(new BigDecimal("3.00"))
+            .build();
+    OrderItem item2 =
+        OrderItem.builder()
+            .storeId(20L)
+            .storeName("Boucherie")
+            .productId(2L)
+            .productName("Steak")
+            .quantity(1)
+            .unitPrice(new BigDecimal("12.00"))
+            .totalPrice(new BigDecimal("12.00"))
+            .build();
+    OrderItem item3 =
+        OrderItem.builder()
+            .storeId(10L)
+            .storeName("Boulangerie")
+            .productId(3L)
+            .productName("Croissant")
+            .quantity(2)
+            .unitPrice(new BigDecimal("1.00"))
+            .totalPrice(new BigDecimal("2.00"))
+            .build();
+
+    Order order =
+        Order.builder()
+            .orderReference("CMD-CC-PAID-001")
+            .customerId("user-777")
+            .clientCode("k7P9xQ2")
+            .status(OrderStatus.PENDING_PAYMENT)
+            .totalAmount(new BigDecimal("17.00"))
+            .currency("EUR")
+            .items(new ArrayList<>(List.of(item1, item2, item3)))
+            .build();
+
+    when(orderRepository.findByOrderReference("CMD-CC-PAID-001")).thenReturn(Optional.of(order));
+    when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+    orderProcessingService.updateOrderStatus("CMD-CC-PAID-001", "PAID");
+
+    ArgumentCaptor<OrderPaidEvent> captor = ArgumentCaptor.forClass(OrderPaidEvent.class);
+    verify(applicationEventPublisher).publishEvent(captor.capture());
+
+    OrderPaidKafkaEvent captured = captor.getValue().kafkaEvent();
+    assertThat(captured).isNotNull();
+    assertThat(captured.orderReference()).isEqualTo("CMD-CC-PAID-001");
+    assertThat(captured.customerId()).isEqualTo("user-777");
+    assertThat(captured.clientCode()).isEqualTo("k7P9xQ2");
+    assertThat(captured.totalAmount()).isEqualByComparingTo(new BigDecimal("17.00"));
+    assertThat(captured.currency()).isEqualTo("EUR");
+    assertThat(captured.stores()).hasSize(2);
+
+    var store10 =
+        captured.stores().stream().filter(s -> s.storeId().equals(10L)).findFirst().orElseThrow();
+    assertThat(store10.storeName()).isEqualTo("Boulangerie");
+    assertThat(store10.amount()).isEqualByComparingTo(new BigDecimal("5.00"));
+
+    var store20 =
+        captured.stores().stream().filter(s -> s.storeId().equals(20L)).findFirst().orElseThrow();
+    assertThat(store20.storeName()).isEqualTo("Boucherie");
+    assertThat(store20.amount()).isEqualByComparingTo(new BigDecimal("12.00"));
+  }
+
+  @Test
   @DisplayName("Should throw IllegalArgumentException when updating status with unknown value")
   void shouldThrowWhenUpdatingInvalidStatus() {
     Order order =
@@ -320,6 +415,8 @@ class OrderProcessingServiceTest {
 
     CreateOrderRequest request = new CreateOrderRequest(List.of(item1, item2), "CLI-1", null);
 
+    when(storeClient.getProductPrice(1L, 101L)).thenReturn(Optional.of(new BigDecimal("5.00")));
+    when(storeClient.getProductPrice(1L, 102L)).thenReturn(Optional.of(new BigDecimal("10.00")));
     doNothing().when(storeClient).updateStock(1L, 101L, -2);
     doNothing().when(storeClient).updateStock(1L, 101L, 2);
     doThrow(new RuntimeException("Insufficient stock on P2"))
@@ -342,11 +439,100 @@ class OrderProcessingServiceTest {
         new CreateOrderItemRequest(1L, "Store", 2L, "Product", new BigDecimal("10.00"), 1);
     CreateOrderRequest request = new CreateOrderRequest(List.of(item), null, "guest@fallback.com");
 
+    when(storeClient.getProductPrice(1L, 2L)).thenReturn(Optional.of(new BigDecimal("10.00")));
     when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
 
     OrderResponse response = orderProcessingService.createOrder(request, null, "   ");
 
     assertThat(response.customerId()).isNull();
     assertThat(response.customerEmail()).isEqualTo("guest@fallback.com");
+  }
+
+  @Test
+  @DisplayName("Should fail closed when Store Service cannot verify product price")
+  void shouldFailClosedWhenStorePriceUnavailable() {
+    CreateOrderItemRequest item =
+        new CreateOrderItemRequest(1L, "Store", 2L, "Product", new BigDecimal("10.00"), 1);
+    CreateOrderRequest request = new CreateOrderRequest(List.of(item), null, "client@test.fr");
+
+    when(storeClient.getProductPrice(1L, 2L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(
+            () -> orderProcessingService.createOrder(request, "cust-1", "client@test.fr", "CLI-1"))
+        .isInstanceOf(StoreServiceUnavailableException.class)
+        .hasMessageContaining("Unable to verify price");
+  }
+
+  @Test
+  @DisplayName("Should reject payment settlement verification when no payment covers order total")
+  void shouldRejectUnpaidOrderSettlementVerification() {
+    java.util.UUID uid = java.util.UUID.randomUUID();
+    Order order =
+        Order.builder()
+            .uid(uid)
+            .orderReference("CMD-CC-UNPAID")
+            .totalAmount(new BigDecimal("25.00"))
+            .status(OrderStatus.PENDING_PAYMENT)
+            .build();
+    when(orderRepository.findByOrderReference("CMD-CC-UNPAID")).thenReturn(Optional.of(order));
+    when(paymentTransactionRepository.sumApprovedAmountByReferences(
+            List.of("CMD-CC-UNPAID", uid.toString())))
+        .thenReturn(BigDecimal.ZERO);
+    when(walletTransactionRepository.sumAmountByOrderReferenceAndType(
+            "CMD-CC-UNPAID", WalletTransactionType.DEBIT))
+        .thenReturn(new BigDecimal("10.00"));
+
+    assertThatThrownBy(() -> orderProcessingService.verifyOrderPaymentSettled("CMD-CC-UNPAID"))
+        .isInstanceOf(ForbiddenException.class)
+        .hasMessageContaining("Payment proof required");
+  }
+
+  @Test
+  @DisplayName("Should accept payment settlement verification for mixed card and wallet payments")
+  void shouldAcceptMixedPaymentSettlementVerification() {
+    java.util.UUID uid = java.util.UUID.randomUUID();
+    Order order =
+        Order.builder()
+            .uid(uid)
+            .orderReference("CMD-CC-MIXED")
+            .totalAmount(new BigDecimal("25.00"))
+            .status(OrderStatus.PENDING_PAYMENT)
+            .build();
+    when(orderRepository.findByOrderReference("CMD-CC-MIXED")).thenReturn(Optional.of(order));
+    when(paymentTransactionRepository.sumApprovedAmountByReferences(
+            List.of("CMD-CC-MIXED", uid.toString())))
+        .thenReturn(new BigDecimal("15.00"));
+    when(walletTransactionRepository.sumAmountByOrderReferenceAndType(
+            "CMD-CC-MIXED", WalletTransactionType.DEBIT))
+        .thenReturn(new BigDecimal("10.00"));
+
+    orderProcessingService.verifyOrderPaymentSettled("CMD-CC-MIXED");
+  }
+
+  @Test
+  @DisplayName("Should reject MERCHANT access when merchant does not own any store in the order")
+  void shouldRejectMerchantNotOwningOrderStore() {
+    OrderStoreSummaryResponse summary =
+        new OrderStoreSummaryResponse(99L, "Other Store", new BigDecimal("10.00"), 1, List.of());
+    OrderResponse order =
+        new OrderResponse(
+            1L,
+            "CMD-CC-IDOR",
+            "cust-1",
+            "client@test.fr",
+            null,
+            new BigDecimal("10.00"),
+            "EUR",
+            "PENDING_PAYMENT",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(summary),
+            List.of());
+    when(storeClient.getMerchantStoreIds("merchant-jwt")).thenReturn(Set.of(1L, 2L));
+
+    assertThatThrownBy(
+            () -> orderProcessingService.verifyMerchantOwnsOrderStore(order, "merchant-jwt"))
+        .isInstanceOf(ForbiddenException.class)
+        .hasMessageContaining("own stores");
   }
 }

@@ -27,4 +27,10 @@ public interface WalletTransactionRepository extends JpaRepository<WalletTransac
       @Param("userId") String userId,
       @Param("type") WalletTransactionType type,
       @Param("since") Instant since);
+
+  @Query(
+      "SELECT COALESCE(SUM(t.amount), 0) FROM WalletTransaction t "
+          + "WHERE t.orderReference = :orderReference AND t.type = :type AND t.status = 'SUCCESS'")
+  BigDecimal sumAmountByOrderReferenceAndType(
+      @Param("orderReference") String orderReference, @Param("type") WalletTransactionType type);
 }
