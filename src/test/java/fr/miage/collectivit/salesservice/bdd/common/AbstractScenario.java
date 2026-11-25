@@ -2,6 +2,7 @@ package fr.miage.collectivit.salesservice.bdd.common;
 
 import fr.miage.collectivit.salesservice.client.BankGatewayClient;
 import fr.miage.collectivit.salesservice.model.PaymentTransaction;
+import fr.miage.collectivit.salesservice.security.TestJwtTokens;
 import io.jsonwebtoken.Jwts;
 import java.util.Date;
 import java.util.UUID;
@@ -41,7 +42,7 @@ public abstract class AbstractScenario {
         .claim("role", role)
         .claim("clientCode", DEFAULT_CLIENT_CODE)
         .signWith(
-            fr.miage.collectivit.salesservice.security.TestJwtTokens.getPrivateKey(),
+            TestJwtTokens.getPrivateKey(),
             Jwts.SIG.RS256)
         .compact();
   }
