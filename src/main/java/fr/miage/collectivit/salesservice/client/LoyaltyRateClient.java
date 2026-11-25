@@ -2,6 +2,7 @@ package fr.miage.collectivit.salesservice.client;
 
 import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
 import fr.miage.collectivit.salesservice.security.ServiceTokenProvider;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.UUID;
 import lombok.Setter;
@@ -10,7 +11,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -28,11 +30,19 @@ public class LoyaltyRateClient {
       ServiceTokenProvider serviceTokenProvider,
       @Value("${services.loyalty.url:http://loyalty-service:8080}") String loyaltyServiceUrl) {
     this.serviceTokenProvider = serviceTokenProvider;
-    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-    requestFactory.setConnectTimeout(Duration.ofSeconds(3));
-    requestFactory.setReadTimeout(Duration.ofSeconds(5));
     this.restClient =
-        RestClient.builder().baseUrl(loyaltyServiceUrl).requestFactory(requestFactory).build();
+        RestClient.builder()
+            .baseUrl(loyaltyServiceUrl)
+            .requestFactory(createClientHttpRequestFactory())
+            .build();
+  }
+
+  @SuppressWarnings("PMD.CloseResource")
+  private static ClientHttpRequestFactory createClientHttpRequestFactory() {
+    HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+    factory.setReadTimeout(Duration.ofSeconds(5));
+    return factory;
   }
 
   public LoyaltyRateClient(RestClient restClient) {

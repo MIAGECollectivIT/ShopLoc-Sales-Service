@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -29,6 +30,8 @@ public class TokenRevocationService {
   private static final String REVOKED_TOKENS_ENDPOINT = "/v1/auth/revoked-tokens";
 
   private final ObjectMapper objectMapper = new ObjectMapper();
+  private final HttpClient httpClient =
+      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS)).build();
   private final Set<String> cachedRevokedJtis =
       Collections.newSetFromMap(new ConcurrentHashMap<>());
   private volatile long lastRevocationFetchTime;
@@ -38,12 +41,14 @@ public class TokenRevocationService {
 
   public boolean isRevoked(String jti) {
     long now = System.currentTimeMillis();
-    if (now - lastRevocationFetchTime > REVOCATION_CACHE_TTL_MS) {
+    if (lastRevocationFetchTime == 0
+        || now - lastRevocationFetchTime > REVOCATION_CACHE_TTL_MS * 2) {
       refreshRevokedTokens();
     }
     return cachedRevokedJtis.contains(jti);
   }
 
+  @Scheduled(fixedDelay = REVOCATION_CACHE_TTL_MS)
   public synchronized void refreshRevokedTokens() {
     if (usersServiceUrl == null || usersServiceUrl.isBlank()) {
       return;
@@ -82,15 +87,15 @@ public class TokenRevocationService {
   }
 
   private Optional<String> fetchRevokedTokensBody(String endpoint) {
-    try (HttpClient client =
-        HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS)).build()) {
+    try {
       HttpRequest request =
           HttpRequest.newBuilder()
               .uri(URI.create(endpoint))
               .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS))
               .GET()
               .build();
-      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      HttpResponse<String> response =
+          httpClient.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() == HTTP_STATUS_OK) {
         return Optional.of(response.body());
       }

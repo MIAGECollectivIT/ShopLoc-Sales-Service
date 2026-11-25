@@ -19,6 +19,15 @@ Ce document consigne l'ensemble des optimisations architecturales, techniques et
 | **OPT-09** | Cache BuildKit Docker & Résolution Ciblée Maven | Déploiement & Industrialisation (CI/CD) | TOGAF Principle: *Ease-of-Use & Time-to-Market* / 12-Factor V (*Build, release, run*) | ✅ Appliqué & Vérifié |
 | **OPT-10** | Typage Strict des Exceptions & Suppression des Catch Génériques | Qualité Logicielle & Fiabilité | TOGAF Principle: *Simplicity & Maintainability Baseline* / ISO/IEC 25010 (*Fault Tolerance*) | ✅ Appliqué & Vérifié |
 | **OPT-11** | Assainissement des Dépendances Maven (`pom.xml`) | Architecture Logicielle & Gouvernance des Dépendances | TOGAF Principle: *Asset Management & Clean Build Hygiene* | ✅ Appliqué & Vérifié |
+| **OPT-12** | Élimination des Requêtes N+1 sur les Commandes (`@EntityGraph` & Batch Fetch) | Performance Base de Données & Scalabilité | TOGAF Principle: *Resource Optimization & Scalability* / Well-Architected (*Performance Efficiency*) | ✅ Appliqué & Vérifié |
+| **OPT-13** | Cache JWT M2M & Rafraîchissement Planifié des Révocations (`HttpClient` mutualisé) | Performance Réseau & Sécurité | TOGAF Principle: *Resource Optimization & Low Latency* / OWASP API2:2023 | ✅ Appliqué & Vérifié |
+| **OPT-14** | Expiration Planifiée des Commandes `PENDING_PAYMENT` & Libération de Stock | Intégrité Métier & Résilience (Saga) | TOGAF Principle: *Business Continuity & Data Consistency* / EIP (*Compensating Action*) | ✅ Appliqué & Vérifié |
+| **OPT-15** | Unicité des Références de Rechargement Wallet (`UUID` vs horodatage) | Intégrité des Données Financières | TOGAF Principle 5: *Data is an Asset & Transactional Integrity* / ISO/IEC 25010 | ✅ Appliqué & Vérifié |
+| **OPT-16** | Correction de la Frontière Transactionnelle d'Envoi des Reçus (`ReceiptEmailService`) | Fiabilité Applicative & Persistance JPA | TOGAF Principle: *Transactional Integrity (ACID) & Simplicity* / ISO/IEC 25010 (*Reliability*) | ✅ Appliqué & Vérifié |
+| **OPT-17** | Uniformisation des Clients HTTP avec Pooling (`JdkClientHttpRequestFactory`) | Performance Réseau & Connexions | TOGAF Principle: *Resource Optimization & Technology Standardization* / Well-Architected (*Performance Efficiency*) | ✅ Appliqué & Vérifié |
+| **OPT-18** | Découplage HTTP/DB & Parallélisation des Prix (`OrderProcessingService`) | Scalabilité HikariCP & Latence | TOGAF Principle: *Resource Optimization & Scalability* / Saga Pattern | ✅ Appliqué & Vérifié |
+| **OPT-19** | Réduction des Frontières `@Transactional` & Publication Kafka Post-Commit (`Payment` / `PhysicalSale`) | Intégrité Transactionnelle & Pool DB | TOGAF Principle 5: *Data is an Asset & Transactional Integrity* / EIP (*Reliable Messaging*) | ✅ Appliqué & Vérifié |
+| **OPT-20** | Optimisation du Build Conteneur Local (Spring Boot Layered JAR, `.dockerignore` & `ENTRYPOINT` exec) | Déploiement & Industrialisation (Docker) | TOGAF Principle: *Resource Optimization & Fast Delivery* / 12-Factor V & IX (*Disposability*) | ✅ Appliqué & Vérifié |
 
 ---
 
@@ -201,3 +210,141 @@ Ce document consigne l'ensemble des optimisations architecturales, techniques et
   > *« Tous les composants logiciels et bibliothèques tierces intégrés directement dans le code source doivent faire l'objet d'une déclaration formelle et centralisée afin de maîtriser l'arbre de dépendances et de prévenir les conflits de transitivité. »*
 * **Gains Mesurés :**
   - Déclarations d'artefacts propres et conformes aux bonnes pratiques Maven.
+
+---
+
+### OPT-12 — Élimination des Requêtes N+1 sur les Commandes (`@EntityGraph` & Batch Fetch)
+
+* **Problème :** Dans `OrderRepository`, les requêtes de lecture (`findByUid`, `findByOrderReference`, `findByCustomerIdOrderByCreatedAtDesc`, `findAll`) ne préchargeaient pas la collection paresseuse `Order.items`. La transformation via `OrderProcessingService.mapToResponse` déclenchait donc une requête SQL supplémentaire par commande (*N+1 queries*).
+* **Solution :**
+  - Ajout de `@EntityGraph(attributePaths = "items")` sur les méthodes de lecture non paginées de `OrderRepository`.
+  - Activation de `spring.jpa.properties.hibernate.default_batch_fetch_size: 50` dans `application.yaml` pour optimiser les requêtes paginées (`Page<Order>`) sans déclencher de pagination en mémoire.
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle — Resource Optimization & Scalability / AWS Well-Architected Framework (Performance Efficiency)**  
+  > *« Les accès aux données relationnelles doivent minimiser les allers-retours réseau (round-trips) vers la base de données en regroupant le chargement des associations nécessaires, tout en préservant une pagination côté serveur bornée en mémoire. »*
+* **Gains Mesurés :**
+  - Réduction de $1 + N$ requêtes SQL à **1 requête** (ou 2 en mode paginé) lors de la consultation des commandes.
+
+---
+
+### OPT-13 — Cache JWT M2M & Rafraîchissement Planifié des Révocations
+
+* **Problème :**
+  1. `TokenRevocationService` instanciat un nouveau `java.net.http.HttpClient` à chaque rafraîchissement et bloquait de manière synchrone (`synchronized`) les threads de requêtes HTTP entrantes toutes les 15 secondes pour interroger `Users-Service`.
+  2. `ServiceTokenProvider.generateServiceToken()` signait un nouveau jeton JWT RS256 à chaque appel sortant vers `Store-Service`, malgré une durée de validité de 5 minutes.
+* **Solution :**
+  - Mutualisation d'une instance unique de `HttpClient` dans `TokenRevocationService` et exécution du rafraîchissement en arrière-plan via `@Scheduled(fixedDelay = 15_000L)`.
+  - Mise en cache du jeton M2M dans `ServiceTokenProvider` avec marge de renouvellement anticipé de 30 secondes avant expiration.
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle — Resource Optimization & Low Latency / Well-Architected (Performance Efficiency) & OWASP API2:2023**  
+  > *« Les mécanismes de contrôle de sécurité transverses (vérification de révocation et signature de jetons inter-services) ne doivent pas introduire de latence synchrone bloquante ni de surcharge cryptographique répétitive sur le chemin critique des requêtes métier. »*
+* **Gains Mesurés :**
+  - Suppression des appels HTTP bloquants vers `Users-Service` sur les requêtes API nominales.
+  - Réutilisation des sockets TCP et suppression des signatures RSA redondantes.
+
+---
+
+### OPT-14 — Expiration Planifiée des Commandes `PENDING_PAYMENT` & Libération de Stock
+
+* **Problème :** `OrderProcessingService` définissait une fenêtre de verrouillage de 30 minutes (`DEFAULT_LOCK_DURATION`) et un statut `EXPIRED` avec logique de compensation (`releaseStockIfCancelledOrExpired`), mais aucun planificateur (`@Scheduled` / `@EnableScheduling`) n'exécutait cette expiration automatiquement. Les stocks réservés de commandes abandonnées restaient bloqués indéfiniment.
+* **Solution :**
+  - Activation de `@EnableScheduling` sur `SalesServiceApplication`.
+  - Ajout de la tâche planifiée `OrderProcessingService.expirePendingOrders()` (`@Scheduled(fixedDelay = 60_000L)`) s'appuyant sur `OrderRepository.findByStatusAndExpiresAtBefore(...)` pour libérer le stock dans `Store-Service` et passer les commandes expirées à `OrderStatus.EXPIRED`.
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle — Business Continuity & Data Consistency / Enterprise Integration Patterns (Compensating Action / Saga)**  
+  > *« Toute réservation temporaire de ressource distribuée doit disposer d'un mécanisme automatique d'expiration et de compensation afin de garantir la cohérence éventuelle du stock global en cas d'abandon utilisateur. »*
+* **Gains Mesurés :**
+  - Libération automatique des stocks sous 60 secondes après expiration du délai de paiement de 30 minutes.
+
+---
+
+### OPT-15 — Unicité des Références de Rechargement Wallet (`UUID`)
+
+* **Problème :** `WalletService.reload(...)` générait la référence de paiement bancaire via `"WRL-" + System.currentTimeMillis()`, exposant à un risque de collision en cas de rechargements simultanés dans la même milliseconde.
+* **Solution :**
+  - Génération d'un suffixe aléatoire issu de `UUID.randomUUID()` (12 caractères hexadécimaux en majuscules), aligné sur le format de `OrderProcessingService.generateOrderReference()`.
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle 5 — Data is an Asset & Transactional Integrity / ISO/IEC 25010 (Reliability)**  
+  > *« Les identifiants de transactions financières doivent garantir une unicité probabiliste forte sous concurrence afin d'éviter toute collision d'audit ou rejet d'idempotence auprès des passerelles de paiement. »*
+* **Gains Mesurés :**
+  - Élimination du risque de collision de référence sous forte concurrence.
+
+---
+
+### OPT-16 — Correction de la Frontière Transactionnelle d'Envoi des Reçus (`ReceiptEmailService`)
+
+* **Problème :** `ReceiptEmailService.sendReceiptEmailAsync` et `resendReceiptEmail` appelaient `this.loadOrderForReceipt(...)` et `this.markReceiptSent(...)` en interne dans le même bean Spring. Cet auto-appel contournait le proxy AOP `@Transactional`, provoquant une `org.hibernate.LazyInitializationException` sur `Order.items` (`HTTP 500` lors du renvoi d'email).
+* **Solution :**
+  - Déplacement des méthodes transactionnelles `findOrderResponse(String)` (`@Transactional(readOnly = true)`) et `markReceiptSent(String)` (`@Transactional`) dans `OrderProcessingService`.
+  - Appel externe via le proxy Spring injecté depuis `ReceiptEmailService`, tout en conservant la génération PDF et l'envoi SMTP hors transaction DB.
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle — Transactional Integrity (ACID) & Simplicity / ISO/IEC 25010 (Reliability)**  
+  > *« Les frontières transactionnelles gérées par proxy doivent être invoquées à travers les frontières de composants afin de garantir l'ouverture effective de la session de persistance, tout en maintenant les opérations d'entrées/sorties externes (PDF, SMTP) hors de la transaction base de données. »*
+* **Gains Mesurés :**
+  - Résolution définitive de l'erreur `HTTP 500` lors de l'envoi et du renvoi des bons de retrait par email.
+
+---
+
+### OPT-17 — Uniformisation des Clients HTTP avec Pooling (`JdkClientHttpRequestFactory`)
+
+* **Problème :** Contrairement à `StoreClient`, `BankGatewayClient` et `LoyaltyRateClient` utilisaient `SimpleClientHttpRequestFactory`, ouvrant une nouvelle connexion TCP sans pooling avancé ni support HTTP/2 à chaque appel sortant.
+* **Solution :**
+  - Remplacement par `JdkClientHttpRequestFactory` adossé à `java.net.http.HttpClient` sur `BankGatewayClient` (connectTimeout 5s, readTimeout 10s) et `LoyaltyRateClient` (connectTimeout 3s, readTimeout 5s).
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle — Resource Optimization & Technology Standardization / AWS Well-Architected (Performance Efficiency)**  
+  > *« Les composants de communication inter-services doivent standardiser l'usage de clients HTTP à réutilisation de connexions (keep-alive / pooling) afin de minimiser la latence TLS/TCP et l'épuisement de descripteurs réseau. »*
+* **Gains Mesurés :**
+  - Réutilisation des connexions TCP vers `Loyalty-Service` et la passerelle bancaire.
+
+---
+
+### OPT-18 — Découplage HTTP/DB & Parallélisation des Prix (`OrderProcessingService`)
+
+* **Problème :** `OrderProcessingService.createOrder` était annoté `@Transactional` sur toute sa durée, immobilisant une connexion HikariCP pendant les $N$ appels `GET` séquentiels de vérification des prix et les $N$ appels `PATCH` de réservation de stock vers `Store-Service`.
+* **Solution :**
+  - Suppression de `@Transactional` englobant `createOrder` et utilisation de `TransactionTemplate` uniquement autour de la persistance (`persistAndMapOrder`), avec compensation `rollbackReservedStock` si la sauvegarde échoue.
+  - Parallélisation de `validateItemPrices` via `CompletableFuture.allOf(...)` dès que le panier contient plus d'un article.
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle — Resource Optimization & Scalability / Saga Compensation Pattern**  
+  > *« Les transactions de base de données doivent être strictement bornées aux opérations de persistance locale et ne jamais englober d'appels réseau distants synchrones. Les vérifications indépendantes en lecture doivent être parallélisées pour borner la latence perçue. »*
+* **Gains Mesurés :**
+  - Connexions HikariCP libérées pendant toute la phase d'appels vers `Store-Service`.
+  - Latence de vérification des prix réduite de $O(N)$ à $O(1)$ (temps du produit le plus lent) pour les paniers multi-articles.
+
+---
+
+### OPT-19 — Réduction des Frontières `@Transactional` & Publication Kafka Post-Commit
+
+* **Problème :** `PaymentService.authorizePayment` et `PhysicalSaleService.recordPhysicalSale` conservaient une connexion PostgreSQL ouverte pendant les appels réseau vers `BankGatewayClient` / `LoyaltyRateClient`, et publiaient les événements Kafka avant le commit de la transaction DB.
+* **Solution :**
+  - Suppression de `@Transactional` englobant l'appel HTTP externe et usage de `TransactionTemplate` uniquement pour l'écriture JPA (`save`).
+  - Déplacement de la publication Kafka (`TransactionEventPublisher`, `PhysicalPaymentEventPublisher`) immédiatement après le commit effectif de la transaction.
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle 5 — Data is an Asset & Transactional Integrity / EIP (Reliable Messaging)**  
+  > *« Un producteur événementiel ne doit diffuser d'événements métier vers le bus Kafka qu'après validation définitive (commit) de l'état persistant local, tout en maintenant la durée de verrouillage des ressources DB au strict minimum. »*
+* **Gains Mesurés :**
+  - Élimination du risque d'événement Kafka fantôme en cas d'échec de commit DB.
+  - Réduction de la contention sur le pool HikariCP lors des pics de paiements.
+
+---
+
+### OPT-20 — Optimisation du Build Conteneur Local (Spring Boot Layered JAR, `.dockerignore` & `ENTRYPOINT` exec)
+
+* **Problème :**
+  1. Le `.dockerignore` n'excluait pas `docs/`, `bruno/`, `*.md`, `.vscode/`, ni `src/test/`, envoyant des fichiers inutiles dans le contexte Docker et invalidant le cache lors de modifications de tests ou de documentation.
+  2. Le `Dockerfile` exécutait `mvn -B -o clean package -DskipTests` (compilant inutilement `src/test`), copiait un Fat JAR monolithique (~70 Mo réécrits à chaque build) et encapsulait la JVM dans un shell `sh -c`.
+* **Solution :**
+  - Durcissement de `.dockerignore` (exclusion de `docs/`, `bruno/`, `*.md`, `src/test/`, `.vscode/`, etc.).
+  - Build ciblé sur `src/main` avec `-Dmaven.test.skip=true` et extraction des couches Spring Boot (`java -Djarmode=tools -jar target/*.jar extract --layers --launcher`) dans `Dockerfile`.
+  - Copie ordonnée des 4 couches (`dependencies`, `spring-boot-loader`, `snapshot-dependencies`, `application`) dans l'image `runner`.
+  - Remplacement de `sh -c` par `ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]` avec `JAVA_TOOL_OPTIONS` (PID 1 direct sur la JVM) et ajout d'un `HEALTHCHECK` sur `/actuator/health/liveness`. *(Note : AppCDS est volontairement exclu avec `JarLauncher` sur Temurin 21 aarch64 afin d'éviter un `SIGSEGV` JVM au chargement du `ConstantPool`).*
+* **Règle d'Architecture Associée :**
+  > **TOGAF Principle — Resource Optimization & Fast Delivery / 12-Factor App V (*Build, release, run*) & IX (*Disposability*)**  
+  > *« Les artefacts conteneurisés doivent séparer les couches immuables (dépendances) du code applicatif, minimiser le contexte de construction et exécuter le processus applicatif directement en PID 1 sans shell intermédiaire afin de garantir un arrêt gracieux (`SIGTERM`) et des reconstructions rapides. »*
+* **Gains Mesurés :**
+  - Seule la couche `application/` (quelques centaines de Ko) est reconstruite lors d'une modification de code Java.
+  - Contexte Docker réduit et aucune compilation de tests lors du packaging conteneur.
+
+
+
+

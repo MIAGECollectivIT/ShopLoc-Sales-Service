@@ -1,14 +1,10 @@
 package fr.miage.collectivit.salesservice.service.receipt;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
-import fr.miage.collectivit.salesservice.model.Order;
-import fr.miage.collectivit.salesservice.model.OrderStatus;
-import fr.miage.collectivit.salesservice.repository.OrderRepository;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
@@ -34,7 +30,6 @@ class ReceiptEmailServiceTest {
   @Mock private ObjectProvider<JavaMailSender> mailSenderProvider;
   @Mock private JavaMailSender javaMailSender;
   @Mock private ReceiptPdfService receiptPdfService;
-  @Mock private OrderRepository orderRepository;
   @Mock private OrderProcessingService orderProcessingService;
 
   private ReceiptEmailService receiptEmailService;
@@ -43,36 +38,19 @@ class ReceiptEmailServiceTest {
   void setUp() {
     receiptEmailService =
         new ReceiptEmailService(
-            mailSenderProvider,
-            receiptPdfService,
-            orderRepository,
-            orderProcessingService,
-            "contact@shop-loc.fr");
+            mailSenderProvider, receiptPdfService, orderProcessingService, "contact@shop-loc.fr");
   }
 
   @Test
   @DisplayName("Should send email with attached PDF when mail sender is configured")
   void shouldSendEmailWithPdfAttachment() {
     String orderRef = "CMD-CC-20261113-1234";
-    Order order =
-        Order.builder()
-            .id(1L)
-            .uid(UUID.randomUUID())
-            .orderReference(orderRef)
-            .customerId("user-1")
-            .customerEmail("client@example.com")
-            .clientCode("CLT-12345")
-            .currency("EUR")
-            .status(OrderStatus.PAID)
-            .totalAmount(new BigDecimal("25.00"))
-            .createdAt(Instant.now())
-            .updatedAt(Instant.now())
-            .expiresAt(Instant.now().plusSeconds(1800))
-            .build();
+    Instant expiresAt = Instant.now().plusSeconds(1800);
+    Instant createdAt = Instant.now();
 
     OrderResponse orderResponse =
         new OrderResponse(
-            order.getUid(),
+            UUID.randomUUID(),
             orderRef,
             "user-1",
             "client@example.com",
@@ -80,14 +58,13 @@ class ReceiptEmailServiceTest {
             new BigDecimal("25.00"),
             "EUR",
             "PAID",
-            order.getExpiresAt(),
-            order.getCreatedAt(),
+            expiresAt,
+            createdAt,
             List.of(),
             List.of(),
             null);
 
-    when(orderProcessingService.resolveOrder(orderRef)).thenReturn(Optional.of(order));
-    when(orderProcessingService.mapToResponse(order)).thenReturn(orderResponse);
+    when(orderProcessingService.findOrderResponse(orderRef)).thenReturn(Optional.of(orderResponse));
     when(receiptPdfService.generateReceiptPdf(orderResponse))
         .thenReturn("%PDF-1.4 dummy".getBytes());
 
@@ -98,31 +75,19 @@ class ReceiptEmailServiceTest {
     receiptEmailService.sendReceiptEmailAsync(orderRef);
 
     verify(javaMailSender).send(any(MimeMessage.class));
-    verify(orderRepository).save(order);
-    assertThat(order.getReceiptSentAt()).isNotNull();
+    verify(orderProcessingService).markReceiptSent(orderRef);
   }
 
   @Test
   @DisplayName("Should simulate email delivery when JavaMailSender is unavailable without crashing")
   void shouldSimulateDeliveryWhenMailSenderNotConfigured() {
     String orderRef = "CMD-CC-20261113-5678";
-    Order order =
-        Order.builder()
-            .id(2L)
-            .uid(UUID.randomUUID())
-            .orderReference(orderRef)
-            .customerId("user-2")
-            .customerEmail("client2@example.com")
-            .status(OrderStatus.PAID)
-            .totalAmount(new BigDecimal("10.00"))
-            .createdAt(Instant.now())
-            .updatedAt(Instant.now())
-            .expiresAt(Instant.now().plusSeconds(1800))
-            .build();
+    Instant expiresAt = Instant.now().plusSeconds(1800);
+    Instant createdAt = Instant.now();
 
     OrderResponse orderResponse =
         new OrderResponse(
-            order.getUid(),
+            UUID.randomUUID(),
             orderRef,
             "user-2",
             "client2@example.com",
@@ -130,22 +95,20 @@ class ReceiptEmailServiceTest {
             new BigDecimal("10.00"),
             "EUR",
             "PAID",
-            order.getExpiresAt(),
-            order.getCreatedAt(),
+            expiresAt,
+            createdAt,
             List.of(),
             List.of(),
             null);
 
-    when(orderProcessingService.resolveOrder(orderRef)).thenReturn(Optional.of(order));
-    when(orderProcessingService.mapToResponse(order)).thenReturn(orderResponse);
+    when(orderProcessingService.findOrderResponse(orderRef)).thenReturn(Optional.of(orderResponse));
     when(receiptPdfService.generateReceiptPdf(orderResponse))
         .thenReturn("%PDF-1.4 dummy".getBytes());
     when(mailSenderProvider.getIfAvailable()).thenReturn(null);
 
     receiptEmailService.sendReceiptEmailAsync(orderRef);
 
-    verify(orderRepository).save(order);
-    assertThat(order.getReceiptSentAt()).isNotNull();
+    verify(orderProcessingService).markReceiptSent(orderRef);
   }
 
   @Test
@@ -153,24 +116,13 @@ class ReceiptEmailServiceTest {
       "Should reject resending receipt email when cooldown is active (429 Too Many Requests)")
   void shouldRejectResendingReceiptEmailWhenCooldownActive() {
     String orderRef = "CMD-CC-20261113-9999";
-    Order order =
-        Order.builder()
-            .id(3L)
-            .uid(UUID.randomUUID())
-            .orderReference(orderRef)
-            .customerId("user-3")
-            .customerEmail("client3@example.com")
-            .status(OrderStatus.PAID)
-            .totalAmount(new BigDecimal("15.00"))
-            .createdAt(Instant.now().minusSeconds(100))
-            .updatedAt(Instant.now())
-            .receiptSentAt(Instant.now().minusSeconds(10)) // sent 10s ago (< 60s cooldown)
-            .expiresAt(Instant.now().plusSeconds(1800))
-            .build();
+    Instant createdAt = Instant.now().minusSeconds(100);
+    Instant expiresAt = Instant.now().plusSeconds(1800);
+    Instant receiptSentAt = Instant.now().minusSeconds(10); // sent 10s ago (< 60s cooldown)
 
     OrderResponse orderResponse =
         new OrderResponse(
-            order.getUid(),
+            UUID.randomUUID(),
             orderRef,
             "user-3",
             "client3@example.com",
@@ -178,14 +130,13 @@ class ReceiptEmailServiceTest {
             new BigDecimal("15.00"),
             "EUR",
             "PAID",
-            order.getExpiresAt(),
-            order.getCreatedAt(),
+            expiresAt,
+            createdAt,
             List.of(),
             List.of(),
-            order.getReceiptSentAt());
+            receiptSentAt);
 
-    when(orderProcessingService.resolveOrder(orderRef)).thenReturn(Optional.of(order));
-    when(orderProcessingService.mapToResponse(order)).thenReturn(orderResponse);
+    when(orderProcessingService.findOrderResponse(orderRef)).thenReturn(Optional.of(orderResponse));
 
     org.assertj.core.api.Assertions.assertThatThrownBy(
             () -> receiptEmailService.resendReceiptEmail(orderRef))

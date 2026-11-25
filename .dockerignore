@@ -5,6 +5,17 @@ node_modules/
 .github/
 .husky/
 .idea/
+.vscode/
 *.iml
 .DS_Store
 Thumbs.db
+docs/
+bruno/
+*.md
+.env*
+.gitattributes
+.releaserc.json
+docker-compose.yml
+package.json
+pmd-ruleset.xml
+src/test/

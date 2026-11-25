@@ -3,13 +3,15 @@ package fr.miage.collectivit.salesservice.client;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
 import fr.miage.collectivit.salesservice.exception.PaymentGatewayException;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -28,11 +30,19 @@ public class BankGatewayClient {
   public BankGatewayClient(
       @Value("${services.bank-gateway.url:http://external-mock-service:8080}")
           String bankGatewayUrl) {
-    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-    requestFactory.setConnectTimeout(Duration.ofSeconds(5));
-    requestFactory.setReadTimeout(Duration.ofSeconds(10));
     this.restClient =
-        RestClient.builder().baseUrl(bankGatewayUrl).requestFactory(requestFactory).build();
+        RestClient.builder()
+            .baseUrl(bankGatewayUrl)
+            .requestFactory(createClientHttpRequestFactory())
+            .build();
+  }
+
+  @SuppressWarnings("PMD.CloseResource")
+  private static ClientHttpRequestFactory createClientHttpRequestFactory() {
+    HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+    factory.setReadTimeout(Duration.ofSeconds(10));
+    return factory;
   }
 
   public PaymentAuthorizationResponse authorize(PaymentAuthorizationRequest request) {

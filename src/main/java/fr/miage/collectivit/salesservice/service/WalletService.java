@@ -166,7 +166,13 @@ public class WalletService {
             ? request.paymentToken().trim()
             : DEFAULT_PAYMENT_TOKEN;
 
-    String paymentReference = "WRL-" + System.currentTimeMillis();
+    String paymentReference =
+        "WRL-"
+            + UUID.randomUUID()
+                .toString()
+                .replace("-", "")
+                .substring(0, 12)
+                .toUpperCase(Locale.ROOT);
     PaymentAuthorizationRequest payRequest =
         new PaymentAuthorizationRequest(amount, DEFAULT_CURRENCY, paymentReference, paymentToken);
 

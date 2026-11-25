@@ -22,6 +22,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -30,6 +31,9 @@ public class PaymentService {
   private final BankGatewayClient bankGatewayClient;
   private final PaymentTransactionRepository paymentTransactionRepository;
   private final TransactionEventPublisher transactionEventPublisher;
+
+  @Autowired(required = false)
+  private TransactionTemplate transactionTemplate;
 
   public PaymentService(
       BankGatewayClient bankGatewayClient,
@@ -47,7 +51,6 @@ public class PaymentService {
     this.transactionEventPublisher = transactionEventPublisher;
   }
 
-  @Transactional
   @SuppressWarnings("PMD.LawOfDemeter")
   public PaymentAuthorizationResponse authorizePayment(
       PaymentAuthorizationRequest request, String userId) {
@@ -81,19 +84,8 @@ public class PaymentService {
             .createdAt(parseInstantOrDefault(gatewayResponse.timestamp()))
             .build();
 
-    PaymentTransaction saved = paymentTransactionRepository.save(transaction);
-
-    if (transactionEventPublisher != null) {
-      Double amountValue = saved.getAmount() != null ? saved.getAmount().doubleValue() : null;
-      transactionEventPublisher.publishTransactionApproved(
-          new TransactionApprovedKafkaEvent(
-              saved.getUserId(),
-              saved.getUid().toString(),
-              saved.getReference(),
-              amountValue,
-              saved.getCurrency(),
-              saved.getCreatedAt()));
-    }
+    PaymentTransaction saved = saveTransaction(transaction);
+    publishApprovedEvent(saved);
 
     if (log.isInfoEnabled()) {
       log.info(
@@ -106,6 +98,28 @@ public class PaymentService {
     }
 
     return PaymentAuthorizationResponse.fromEntity(saved);
+  }
+
+  private PaymentTransaction saveTransaction(PaymentTransaction transaction) {
+    return transactionTemplate != null
+        ? transactionTemplate.execute(status -> paymentTransactionRepository.save(transaction))
+        : paymentTransactionRepository.save(transaction);
+  }
+
+  @SuppressWarnings("PMD.LawOfDemeter")
+  private void publishApprovedEvent(PaymentTransaction saved) {
+    if (transactionEventPublisher == null || saved == null) {
+      return;
+    }
+    Double amountValue = saved.getAmount() != null ? saved.getAmount().doubleValue() : null;
+    transactionEventPublisher.publishTransactionApproved(
+        new TransactionApprovedKafkaEvent(
+            saved.getUserId(),
+            saved.getUid().toString(),
+            saved.getReference(),
+            amountValue,
+            saved.getCurrency(),
+            saved.getCreatedAt()));
   }
 
   @Transactional(readOnly = true)

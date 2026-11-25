@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -34,6 +35,9 @@ public class PhysicalSaleService {
   private final LoyaltyRateClient loyaltyRateClient;
   private final TransactionEventPublisher transactionEventPublisher;
   private final PhysicalPaymentEventPublisher physicalPaymentEventPublisher;
+
+  @Autowired(required = false)
+  private TransactionTemplate transactionTemplate;
 
   public PhysicalSaleService(
       PhysicalSaleTransactionRepository physicalSaleTransactionRepository,
@@ -60,7 +64,6 @@ public class PhysicalSaleService {
     this.physicalPaymentEventPublisher = physicalPaymentEventPublisher;
   }
 
-  @Transactional
   @SuppressWarnings("PMD.LawOfDemeter")
   public PhysicalSaleResponse recordPhysicalSale(PhysicalSaleRequest request, String callerUserId) {
     MerchantLoyaltyRateDto loyaltyRate = loyaltyRateClient.getStoreLoyaltyRate(request.storeUid());
@@ -100,8 +103,14 @@ public class PhysicalSaleService {
             .createdAt(Instant.now())
             .build();
 
-    PhysicalSaleTransaction saved = physicalSaleTransactionRepository.save(transaction);
-    publishKafkaEvents(saved);
+    PhysicalSaleTransaction saved =
+        transactionTemplate != null
+            ? transactionTemplate.execute(
+                status -> physicalSaleTransactionRepository.save(transaction))
+            : physicalSaleTransactionRepository.save(transaction);
+    if (saved != null) {
+      publishKafkaEvents(saved);
+    }
 
     if (log.isInfoEnabled()) {
       log.info(

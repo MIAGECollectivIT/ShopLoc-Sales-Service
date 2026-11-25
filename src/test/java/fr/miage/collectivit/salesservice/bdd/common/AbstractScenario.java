@@ -41,9 +41,7 @@ public abstract class AbstractScenario {
         .claim("email", DEFAULT_CLIENT_EMAIL)
         .claim("role", role)
         .claim("clientCode", DEFAULT_CLIENT_CODE)
-        .signWith(
-            TestJwtTokens.getPrivateKey(),
-            Jwts.SIG.RS256)
+        .signWith(TestJwtTokens.getPrivateKey(), Jwts.SIG.RS256)
         .compact();
   }
 

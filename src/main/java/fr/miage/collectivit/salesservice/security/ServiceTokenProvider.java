@@ -21,11 +21,14 @@ import org.springframework.stereotype.Component;
 public class ServiceTokenProvider {
 
   private static final long TOKEN_VALIDITY_MS = 300_000L;
+  private static final long TOKEN_REFRESH_MARGIN_MS = 30_000L;
 
   @Value("${application.security.jwt.private-key:}")
   private String privateKeyString;
 
   private PrivateKey privateKey;
+  private volatile String cachedToken;
+  private volatile long cachedTokenExpiresAt;
 
   @PostConstruct
   public void init() {
@@ -55,21 +58,28 @@ public class ServiceTokenProvider {
     }
   }
 
-  public String generateServiceToken() {
+  public synchronized String generateServiceToken() {
     long now = System.currentTimeMillis();
+    if (cachedToken != null && now + TOKEN_REFRESH_MARGIN_MS < cachedTokenExpiresAt) {
+      return cachedToken;
+    }
+
+    long expiresAt = now + TOKEN_VALIDITY_MS;
     var builder =
         Jwts.builder()
             .id(UUID.randomUUID().toString())
             .subject("sales-service")
             .issuer("shoploc-sales-service")
             .issuedAt(new Date(now))
-            .expiration(new Date(now + TOKEN_VALIDITY_MS))
+            .expiration(new Date(expiresAt))
             .claim("userId", "sales-service")
             .claim("email", "sales-service@shoploc.internal")
             .claim("role", "SERVICE");
 
     if (privateKey != null) {
-      return builder.signWith(privateKey, Jwts.SIG.RS256).compact();
+      cachedToken = builder.signWith(privateKey, Jwts.SIG.RS256).compact();
+      cachedTokenExpiresAt = expiresAt;
+      return cachedToken;
     }
     if (log.isWarnEnabled()) {
       log.warn("No RSA private key configured in ServiceTokenProvider; returning empty token");
