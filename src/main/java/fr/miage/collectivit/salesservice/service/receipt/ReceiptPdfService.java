@@ -16,6 +16,8 @@ import com.lowagie.text.Phrase;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
+import fr.miage.collectivit.salesservice.client.LoyaltyRateClient;
+import fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto;
 import fr.miage.collectivit.salesservice.dto.OrderItemResponse;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
@@ -24,11 +26,13 @@ import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -59,6 +63,17 @@ public class ReceiptPdfService {
 
   private static final DateTimeFormatter DATE_FORMATTER =
       DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss").withZone(ZoneId.of("Europe/Paris"));
+
+  private final LoyaltyRateClient loyaltyRateClient;
+
+  public ReceiptPdfService() {
+    this(null);
+  }
+
+  @Autowired
+  public ReceiptPdfService(@Autowired(required = false) LoyaltyRateClient loyaltyRateClient) {
+    this.loyaltyRateClient = loyaltyRateClient;
+  }
 
   /**
    * Generates a byte array containing the official PDF receipt / bon de retrait for an order.
@@ -92,7 +107,7 @@ public class ReceiptPdfService {
 
       document.close();
       return out.toByteArray();
-    } catch (DocumentException ex) {
+    } catch (DocumentException | java.io.IOException ex) {
       log.error(
           "Failed to generate receipt PDF for order {}: {}",
           order.orderReference(),
@@ -100,7 +115,7 @@ public class ReceiptPdfService {
           ex);
       throw new IllegalStateException(
           "Erreur lors de la génération du document PDF de bon de retrait", ex);
-    } catch (Exception ex) {
+    } catch (RuntimeException ex) {
       log.error(
           "Unexpected error during PDF generation for order {}: {}",
           order.orderReference(),
@@ -296,10 +311,13 @@ public class ReceiptPdfService {
     loyaltyCell.setBorder(PdfPCell.NO_BORDER);
     boolean hasClientCode = order.clientCode() != null && !order.clientCode().isBlank();
     if (hasClientCode) {
-      // 1 euro = 1 point standard baseline reward
-      long estimatedPoints = order.totalAmount() != null ? order.totalAmount().longValue() : 0L;
+      BigDecimal earnedPoints = computeEarnedPoints(order);
       loyaltyCell.addElement(
-          new Paragraph("Points fidélité acquis : +" + estimatedPoints + " pts", pointsFont));
+          new Paragraph(
+              "Points fidélité acquis : +"
+                  + earnedPoints.setScale(1, RoundingMode.HALF_UP).toPlainString()
+                  + " pts",
+              pointsFont));
     } else {
       loyaltyCell.addElement(
           new Paragraph(
@@ -318,6 +336,44 @@ public class ReceiptPdfService {
     totalTable.addCell(loyaltyCell);
     totalTable.addCell(totalCell);
     document.add(totalTable);
+  }
+
+  BigDecimal computeEarnedPoints(OrderResponse order) {
+    if (order.storeSummaries() != null && !order.storeSummaries().isEmpty()) {
+      BigDecimal totalPoints = BigDecimal.ZERO.setScale(1, RoundingMode.UNNECESSARY);
+      for (OrderStoreSummaryResponse summary : order.storeSummaries()) {
+        MerchantLoyaltyRateDto rate = resolveStoreRate(summary.storeUid());
+        totalPoints = totalPoints.add(calculateStorePoints(summary.subtotal(), rate));
+      }
+      return totalPoints;
+    }
+    return calculateStorePoints(order.totalAmount(), MerchantLoyaltyRateDto.defaultForStore(null));
+  }
+
+  private MerchantLoyaltyRateDto resolveStoreRate(java.util.UUID storeUid) {
+    if (loyaltyRateClient != null && storeUid != null) {
+      return loyaltyRateClient.getStoreLoyaltyRate(storeUid);
+    }
+    return MerchantLoyaltyRateDto.defaultForStore(storeUid);
+  }
+
+  private static BigDecimal calculateStorePoints(BigDecimal amount, MerchantLoyaltyRateDto rate) {
+    if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0 || rate == null) {
+      return BigDecimal.ZERO.setScale(1, RoundingMode.UNNECESSARY);
+    }
+    BigDecimal euroAmount = rate.euroAmount();
+    BigDecimal pointsReward = rate.pointsReward();
+    if (euroAmount == null
+        || euroAmount.compareTo(BigDecimal.ZERO) <= 0
+        || pointsReward == null
+        || pointsReward.compareTo(BigDecimal.ZERO) <= 0) {
+      return BigDecimal.ZERO.setScale(1, RoundingMode.UNNECESSARY);
+    }
+    BigDecimal rawPoints =
+        amount.multiply(pointsReward).divide(euroAmount, 4, RoundingMode.HALF_UP);
+    BigDecimal halfSteps =
+        rawPoints.multiply(BigDecimal.valueOf(2)).setScale(0, RoundingMode.FLOOR);
+    return halfSteps.divide(BigDecimal.valueOf(2), 1, RoundingMode.UNNECESSARY);
   }
 
   private void addFooter(Document document, boolean isCompleted) throws DocumentException {

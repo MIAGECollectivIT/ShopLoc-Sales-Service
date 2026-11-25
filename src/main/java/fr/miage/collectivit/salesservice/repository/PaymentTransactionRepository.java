@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +20,9 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
 
   List<PaymentTransaction> findByUserIdAndStatusAndCreatedAtBetweenOrderByCreatedAtDesc(
       String userId, String status, Instant from, Instant to);
+
+  Page<PaymentTransaction> findByUserIdAndStatusAndCreatedAtBetweenOrderByCreatedAtDesc(
+      String userId, String status, Instant from, Instant to, Pageable pageable);
 
   @Query(
       "SELECT COALESCE(SUM(p.amount), 0) FROM PaymentTransaction p "

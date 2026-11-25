@@ -590,4 +590,36 @@ class OrderProcessingServiceTest {
         .isInstanceOf(ForbiddenException.class)
         .hasMessageContaining("own stores");
   }
+
+  @Test
+  @DisplayName("Should expire stale PENDING_PAYMENT orders and release reserved stock")
+  void shouldExpirePendingOrdersAndReleaseStock() {
+    OrderItem item =
+        OrderItem.builder()
+            .uid(UUID.randomUUID())
+            .storeUid(STORE_UID_1)
+            .productUid(PRODUCT_UID_1)
+            .quantity(3)
+            .unitPrice(new BigDecimal("10.00"))
+            .totalPrice(new BigDecimal("30.00"))
+            .build();
+    Order staleOrder =
+        Order.builder()
+            .uid(UUID.randomUUID())
+            .orderReference("CMD-CC-EXPIRED-1")
+            .status(OrderStatus.PENDING_PAYMENT)
+            .expiresAt(Instant.now().minusSeconds(60))
+            .items(List.of(item))
+            .build();
+
+    when(orderRepository.findByStatusAndExpiresAtBefore(
+            org.mockito.ArgumentMatchers.eq(OrderStatus.PENDING_PAYMENT), any(Instant.class)))
+        .thenReturn(List.of(staleOrder));
+
+    orderProcessingService.expirePendingOrders();
+
+    assertThat(staleOrder.getStatus()).isEqualTo(OrderStatus.EXPIRED);
+    verify(storeClient).updateStock(STORE_UID_1, PRODUCT_UID_1, 3);
+    verify(orderRepository).saveAll(List.of(staleOrder));
+  }
 }

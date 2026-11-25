@@ -6,33 +6,32 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.Optional;
-import javax.crypto.SecretKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+/**
+ * Validates JWT tokens using RS256 asymmetric cryptography. Eliminates symmetric HMAC fallback (C2)
+ * to prevent algorithm confusion attacks.
+ */
 @Component
 @SuppressWarnings("PMD.LawOfDemeter")
 public class JwtKeyProvider {
 
   private static final Logger log = LoggerFactory.getLogger(JwtKeyProvider.class);
-  private static final int MIN_KEY_BYTES = 32;
   private static final int MIN_RSA_KEY_BYTES = 200;
   private static final int HTTP_STATUS_OK = 200;
   private static final int HTTP_TIMEOUT_SECONDS = 2;
@@ -49,14 +48,10 @@ public class JwtKeyProvider {
   @Value("${application.security.jwt.public-key:}")
   private String publicKeyString;
 
-  @Value("${application.security.jwt.secret-key:}")
-  private String secretKeyString;
-
   @Value("${services.users.url:http://users-service:8080}")
   private String usersServiceUrl;
 
   private JwtParser rsaParser;
-  private JwtParser hmacParser;
 
   @PostConstruct
   public void init() {
@@ -64,11 +59,7 @@ public class JwtKeyProvider {
       parseRsaPublicKey(publicKeyString);
     }
 
-    if (secretKeyString != null && !secretKeyString.isBlank()) {
-      parseHmacSecretKey(secretKeyString);
-    }
-
-    if (this.rsaParser == null && this.hmacParser == null) {
+    if (this.rsaParser == null) {
       fetchPublicKeyFromUsersService();
     }
   }
@@ -93,34 +84,6 @@ public class JwtKeyProvider {
       if (log.isWarnEnabled()) {
         log.warn("Unable to initialize RSA public key: {}", ex.getMessage());
       }
-    }
-  }
-
-  private void parseHmacSecretKey(String rawKey) {
-    try {
-      byte[] keyBytes = extractHmacBytes(rawKey);
-      SecretKey secretKey = Keys.hmacShaKeyFor(keyBytes);
-      this.hmacParser = Jwts.parser().verifyWith(secretKey).build();
-      if (log.isInfoEnabled()) {
-        log.info("JWT Validator initialized with HMAC symmetric key support.");
-      }
-    } catch (IllegalArgumentException ex) {
-      if (log.isWarnEnabled()) {
-        log.warn("Unable to initialize HMAC key: {}", ex.getMessage());
-      }
-    }
-  }
-
-  private byte[] extractHmacBytes(String rawKey) {
-    String trimmed = rawKey.trim();
-    try {
-      byte[] keyBytes = Base64.getDecoder().decode(trimmed);
-      if (keyBytes.length >= MIN_KEY_BYTES) {
-        return keyBytes;
-      }
-      return trimmed.getBytes(StandardCharsets.UTF_8);
-    } catch (IllegalArgumentException notBase64) {
-      return trimmed.getBytes(StandardCharsets.UTF_8);
     }
   }
 
@@ -164,43 +127,16 @@ public class JwtKeyProvider {
   }
 
   public Claims parseSignedClaims(String token) {
-    if (rsaParser == null && hmacParser == null) {
+    if (rsaParser == null) {
       fetchPublicKeyFromUsersService();
     }
 
-    Optional<Claims> claimsOpt = tryParseWithRsa(token);
-    if (claimsOpt.isPresent()) {
-      return claimsOpt.get();
-    }
-
-    claimsOpt = tryParseWithHmac(token);
-    if (claimsOpt.isPresent()) {
-      return claimsOpt.get();
-    }
-
-    throw new SecurityException("No valid key available to verify JWT token.");
-  }
-
-  private Optional<Claims> tryParseWithRsa(String token) {
     if (rsaParser == null) {
-      return Optional.empty();
+      throw new SecurityException("No valid RSA public key available to verify JWT token.");
     }
-    try {
-      return Optional.of(rsaParser.parseSignedClaims(token).getPayload());
-    } catch (JwtException | IllegalArgumentException ex) {
-      if (hmacParser == null) {
-        throw new SecurityException("Invalid or expired JWT token: " + ex.getMessage(), ex);
-      }
-      return Optional.empty();
-    }
-  }
 
-  private Optional<Claims> tryParseWithHmac(String token) {
-    if (hmacParser == null) {
-      return Optional.empty();
-    }
     try {
-      return Optional.of(hmacParser.parseSignedClaims(token).getPayload());
+      return rsaParser.parseSignedClaims(token).getPayload();
     } catch (JwtException | IllegalArgumentException ex) {
       throw new SecurityException("Invalid or expired JWT token: " + ex.getMessage(), ex);
     }

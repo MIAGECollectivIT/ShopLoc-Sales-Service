@@ -1,6 +1,7 @@
 package fr.miage.collectivit.salesservice.service;
 
 import fr.miage.collectivit.salesservice.client.BankGatewayClient;
+import fr.miage.collectivit.salesservice.dto.PageResponse;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
 import fr.miage.collectivit.salesservice.dto.UserPaymentTransactionResponse;
@@ -17,8 +18,11 @@ import java.util.Locale;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -27,6 +31,9 @@ public class PaymentService {
   private final BankGatewayClient bankGatewayClient;
   private final PaymentTransactionRepository paymentTransactionRepository;
   private final TransactionEventPublisher transactionEventPublisher;
+
+  @Autowired(required = false)
+  private TransactionTemplate transactionTemplate;
 
   public PaymentService(
       BankGatewayClient bankGatewayClient,
@@ -77,19 +84,8 @@ public class PaymentService {
             .createdAt(parseInstantOrDefault(gatewayResponse.timestamp()))
             .build();
 
-    PaymentTransaction saved = paymentTransactionRepository.save(transaction);
-
-    if (transactionEventPublisher != null) {
-      Double amountValue = saved.getAmount() != null ? saved.getAmount().doubleValue() : null;
-      transactionEventPublisher.publishTransactionApproved(
-          new TransactionApprovedKafkaEvent(
-              saved.getUserId(),
-              saved.getUid().toString(),
-              saved.getReference(),
-              amountValue,
-              saved.getCurrency(),
-              saved.getCreatedAt()));
-    }
+    PaymentTransaction saved = saveTransaction(transaction);
+    publishApprovedEvent(saved);
 
     if (log.isInfoEnabled()) {
       log.info(
@@ -102,6 +98,28 @@ public class PaymentService {
     }
 
     return PaymentAuthorizationResponse.fromEntity(saved);
+  }
+
+  private PaymentTransaction saveTransaction(PaymentTransaction transaction) {
+    return transactionTemplate != null
+        ? transactionTemplate.execute(status -> paymentTransactionRepository.save(transaction))
+        : paymentTransactionRepository.save(transaction);
+  }
+
+  @SuppressWarnings("PMD.LawOfDemeter")
+  private void publishApprovedEvent(PaymentTransaction saved) {
+    if (transactionEventPublisher == null || saved == null) {
+      return;
+    }
+    Double amountValue = saved.getAmount() != null ? saved.getAmount().doubleValue() : null;
+    transactionEventPublisher.publishTransactionApproved(
+        new TransactionApprovedKafkaEvent(
+            saved.getUserId(),
+            saved.getUid().toString(),
+            saved.getReference(),
+            amountValue,
+            saved.getCurrency(),
+            saved.getCreatedAt()));
   }
 
   @Transactional(readOnly = true)
@@ -132,6 +150,26 @@ public class PaymentService {
         .stream()
         .map(UserPaymentTransactionResponse::fromEntity)
         .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<UserPaymentTransactionResponse> getUserTransactions(
+      String userId, Instant from, Instant to, Pageable pageable) {
+    if (!hasText(userId)) {
+      throw new IllegalArgumentException("User ID must not be blank");
+    }
+    if (from == null || to == null) {
+      throw new IllegalArgumentException("Both 'from' and 'to' date parameters are required");
+    }
+    if (from.isAfter(to)) {
+      throw new IllegalArgumentException(
+          "The 'from' timestamp must be before or equal to 'to' timestamp");
+    }
+
+    Page<PaymentTransaction> page =
+        paymentTransactionRepository.findByUserIdAndStatusAndCreatedAtBetweenOrderByCreatedAtDesc(
+            userId.trim(), PaymentTransaction.RG001_APPROVED_STATUS, from, to, pageable);
+    return PageResponse.from(page.map(UserPaymentTransactionResponse::fromEntity));
   }
 
   @Transactional(readOnly = true)

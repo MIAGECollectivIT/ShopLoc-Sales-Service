@@ -115,4 +115,46 @@ class ReceiptPdfServiceTest {
     assertThat(pdfBytes).isNotNull();
     assertThat(new String(pdfBytes, 0, 8, StandardCharsets.US_ASCII)).startsWith("%PDF-");
   }
+
+  @Test
+  @DisplayName("Should compute earned loyalty points using per-store rates from LoyaltyRateClient")
+  void shouldComputeEarnedPointsUsingPerStoreLoyaltyRates() {
+    UUID store1 = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    UUID store2 = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    var loyaltyRateClient =
+        org.mockito.Mockito.mock(fr.miage.collectivit.salesservice.client.LoyaltyRateClient.class);
+    org.mockito.Mockito.when(loyaltyRateClient.getStoreLoyaltyRate(store1))
+        .thenReturn(
+            new fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto(
+                store1, new BigDecimal("2.00"), new BigDecimal("1.0"), true));
+    org.mockito.Mockito.when(loyaltyRateClient.getStoreLoyaltyRate(store2))
+        .thenReturn(
+            fr.miage.collectivit.salesservice.dto.MerchantLoyaltyRateDto.defaultForStore(store2));
+
+    ReceiptPdfService customPdfService = new ReceiptPdfService(loyaltyRateClient);
+    OrderStoreSummaryResponse s1 =
+        new OrderStoreSummaryResponse(store1, "Store 1", new BigDecimal("20.00"), 1, List.of());
+    OrderStoreSummaryResponse s2 =
+        new OrderStoreSummaryResponse(store2, "Store 2", new BigDecimal("43.60"), 1, List.of());
+    OrderResponse order =
+        new OrderResponse(
+            UUID.randomUUID(),
+            "CMD-CC-20261125-POINTS",
+            "user-1",
+            "client@test.fr",
+            "CL95001",
+            new BigDecimal("63.60"),
+            "EUR",
+            "PAID",
+            Instant.now().plusSeconds(1800),
+            Instant.now(),
+            List.of(s1, s2),
+            List.of(),
+            null);
+
+    BigDecimal earned = customPdfService.computeEarnedPoints(order);
+    // Store 1: 20.00 * 1 / 2 = 10.0 pts; Store 2: 43.60 * 1 / 1 -> 43.5 pts (0.5 step floor) ->
+    // 53.5 pts
+    assertThat(earned).isEqualByComparingTo("53.5");
+  }
 }

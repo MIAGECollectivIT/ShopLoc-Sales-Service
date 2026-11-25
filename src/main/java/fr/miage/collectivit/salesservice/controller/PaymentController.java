@@ -1,5 +1,6 @@
 package fr.miage.collectivit.salesservice.controller;
 
+import fr.miage.collectivit.salesservice.dto.PageResponse;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
 import fr.miage.collectivit.salesservice.dto.UserPaymentTransactionResponse;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,6 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class PaymentController {
 
+  private static final String CODE_200 = "200";
   private static final String CODE_401 = "401";
   private static final String MSG_UNAUTHORIZED = "Unauthorized - Bearer token required";
 
@@ -49,7 +52,7 @@ public class PaymentController {
           "Forwards the payment request to the external bank gateway emulator, enforces RG001 approval, and persists the transaction audit record.")
   @ApiResponses(
       value = {
-        @ApiResponse(responseCode = "200", description = "Payment authorized under RG001"),
+        @ApiResponse(responseCode = CODE_200, description = "Payment authorized under RG001"),
         @ApiResponse(responseCode = "400", description = "Invalid payment request payload"),
         @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
         @ApiResponse(responseCode = "502", description = "External bank gateway unavailable")
@@ -67,7 +70,7 @@ public class PaymentController {
       description = "Returns the most recent payment authorization record matching the reference.")
   @ApiResponses(
       value = {
-        @ApiResponse(responseCode = "200", description = "Payment transaction found"),
+        @ApiResponse(responseCode = CODE_200, description = "Payment transaction found"),
         @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
         @ApiResponse(
             responseCode = "403",
@@ -91,7 +94,7 @@ public class PaymentController {
           "Retrieves all approved payment transactions (TRANSACTION_APPROVED) for the given user between 'from' and 'to' timestamps.")
   @ApiResponses(
       value = {
-        @ApiResponse(responseCode = "200", description = "Transactions retrieved successfully"),
+        @ApiResponse(responseCode = CODE_200, description = "Transactions retrieved successfully"),
         @ApiResponse(responseCode = "400", description = "Invalid date range parameters"),
         @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
         @ApiResponse(
@@ -114,6 +117,42 @@ public class PaymentController {
     }
 
     return ResponseEntity.ok(paymentService.getUserTransactions(targetUserId, from, to));
+  }
+
+  @GetMapping("/users/{userId}/transactions/page")
+  @RequiresRole({UserRole.CLIENT, UserRole.ADMIN})
+  @Operation(
+      summary = "Extract paginated approved payment transactions for a user within a time interval",
+      description =
+          "Retrieves paginated approved payment transactions for the given user between 'from' and 'to' timestamps.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = CODE_200,
+            description = "Paginated transactions retrieved successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid date range parameters"),
+        @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
+        @ApiResponse(
+            responseCode = "403",
+            description = "Forbidden - Caller cannot access another user's transactions")
+      })
+  public ResponseEntity<PageResponse<UserPaymentTransactionResponse>> getUserTransactionsPage(
+      @PathVariable UUID userId,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+      Pageable pageable,
+      HttpServletRequest request) {
+    String authenticatedRole = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
+    String authenticatedUserId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+    String targetUserId = userId.toString();
+
+    if (!UserRole.ADMIN.name().equalsIgnoreCase(authenticatedRole)
+        && (authenticatedUserId == null || !authenticatedUserId.equalsIgnoreCase(targetUserId))) {
+      throw new ForbiddenException(
+          "Access denied: you do not have permission to view transactions of another user");
+    }
+
+    return ResponseEntity.ok(paymentService.getUserTransactions(targetUserId, from, to, pageable));
   }
 
   private void verifyPaymentAccess(String reference, String role, String userId) {

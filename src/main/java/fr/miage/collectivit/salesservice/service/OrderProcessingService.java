@@ -6,6 +6,7 @@ import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderItemResponse;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
+import fr.miage.collectivit.salesservice.dto.PageResponse;
 import fr.miage.collectivit.salesservice.dto.event.OrderPaidKafkaEvent;
 import fr.miage.collectivit.salesservice.dto.event.StoreOrderBreakdown;
 import fr.miage.collectivit.salesservice.exception.ForbiddenException;
@@ -36,11 +37,18 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Service responsible for processing and managing multi-store click & collect orders, calculating
@@ -55,11 +63,13 @@ import org.springframework.transaction.annotation.Transactional;
   "PMD.ExcessiveImports",
   "PMD.GodClass",
   "PMD.TooManyMethods",
-  "PMD.CyclomaticComplexity"
+  "PMD.CyclomaticComplexity",
+  "PMD.AvoidCatchingGenericException"
 })
 public class OrderProcessingService {
 
   public static final Duration DEFAULT_LOCK_DURATION = Duration.ofMinutes(30);
+  private static final int SINGLE_ITEM_COUNT = 1;
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private final OrderRepository orderRepository;
@@ -68,13 +78,14 @@ public class OrderProcessingService {
   private final PaymentTransactionRepository paymentTransactionRepository;
   private final WalletTransactionRepository walletTransactionRepository;
 
-  @Transactional
+  @Autowired(required = false)
+  private TransactionTemplate transactionTemplate;
+
   public OrderResponse createOrder(
       CreateOrderRequest request, String customerId, String customerEmail) {
     return createOrder(request, customerId, customerEmail, null);
   }
 
-  @Transactional
   public OrderResponse createOrder(
       CreateOrderRequest request,
       String customerId,
@@ -85,8 +96,24 @@ public class OrderProcessingService {
     }
 
     validateItemPrices(request.items());
-    reserveStock(request.items());
+    List<ReservedItem> reservedItems = reserveStock(request.items());
+    Order order = buildOrderEntity(request, customerId, customerEmail, authenticatedClientCode);
 
+    try {
+      return transactionTemplate != null
+          ? transactionTemplate.execute(status -> persistAndMapOrder(order))
+          : persistAndMapOrder(order);
+    } catch (RuntimeException ex) {
+      rollbackReservedStock(reservedItems);
+      throw ex;
+    }
+  }
+
+  private Order buildOrderEntity(
+      CreateOrderRequest request,
+      String customerId,
+      String customerEmail,
+      String authenticatedClientCode) {
     String effectiveEmail =
         (customerEmail != null && !customerEmail.isBlank())
             ? customerEmail
@@ -98,14 +125,10 @@ public class OrderProcessingService {
 
     Instant now = Instant.now();
     Instant expiresAt = now.plus(DEFAULT_LOCK_DURATION);
-    String orderReference = generateOrderReference();
-
-    BigDecimal totalOrderAmount = BigDecimal.ZERO;
-
     Order order =
         Order.builder()
             .uid(UUID.randomUUID())
-            .orderReference(orderReference)
+            .orderReference(generateOrderReference())
             .customerId(customerId)
             .customerEmail(effectiveEmail)
             .clientCode(effectiveClientCode)
@@ -117,11 +140,11 @@ public class OrderProcessingService {
             .items(new ArrayList<>())
             .build();
 
+    BigDecimal totalOrderAmount = BigDecimal.ZERO;
     for (CreateOrderItemRequest itemReq : request.items()) {
       BigDecimal lineTotal = itemReq.unitPrice().multiply(BigDecimal.valueOf(itemReq.quantity()));
       totalOrderAmount = totalOrderAmount.add(lineTotal);
-
-      OrderItem item =
+      order.addItem(
           OrderItem.builder()
               .uid(UUID.randomUUID())
               .order(order)
@@ -132,13 +155,13 @@ public class OrderProcessingService {
               .unitPrice(itemReq.unitPrice())
               .quantity(itemReq.quantity())
               .totalPrice(lineTotal)
-              .build();
-
-      order.addItem(item);
+              .build());
     }
-
     order.setTotalAmount(totalOrderAmount);
+    return order;
+  }
 
+  private OrderResponse persistAndMapOrder(Order order) {
     Order saved = orderRepository.save(order);
     if (log.isInfoEnabled()) {
       log.info(
@@ -148,7 +171,6 @@ public class OrderProcessingService {
           saved.getItems().size(),
           saved.getStatus());
     }
-
     return mapToResponse(saved);
   }
 
@@ -163,6 +185,20 @@ public class OrderProcessingService {
       orders = List.of();
     }
     return orders.stream().map(this::mapToResponse).toList();
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<OrderResponse> getOrders(
+      String callerUserId, String callerRole, Pageable pageable) {
+    Page<Order> orders;
+    if (UserRole.ADMIN.name().equalsIgnoreCase(callerRole)) {
+      orders = orderRepository.findAll(pageable);
+    } else if (callerUserId != null && !callerUserId.isBlank()) {
+      orders = orderRepository.findByCustomerIdOrderByCreatedAtDesc(callerUserId, pageable);
+    } else {
+      orders = Page.empty(pageable);
+    }
+    return PageResponse.from(orders.map(this::mapToResponse));
   }
 
   public Optional<Order> resolveOrder(String identifier) {
@@ -254,6 +290,26 @@ public class OrderProcessingService {
     return mapToResponse(order);
   }
 
+  /**
+   * Resolves an order by reference, UID, or ID and maps it to {@link OrderResponse} within a
+   * read-only transaction so lazy associations (such as {@code items}) are initialized safely.
+   */
+  @Transactional(readOnly = true)
+  public Optional<OrderResponse> findOrderResponse(String identifier) {
+    return resolveOrder(identifier).map(this::mapToResponse);
+  }
+
+  /** Marks the receipt email as sent for the given order reference inside a transaction. */
+  @Transactional
+  public void markReceiptSent(String orderReference) {
+    resolveOrder(orderReference)
+        .ifPresent(
+            order -> {
+              order.setReceiptSentAt(Instant.now());
+              orderRepository.save(order);
+            });
+  }
+
   @Transactional
   public OrderResponse updateOrderStatus(String identifier, String newStatus) {
     Order order =
@@ -301,6 +357,31 @@ public class OrderProcessingService {
       log.info("Order status updated: identifier={}, newStatus={}", identifier, status);
     }
     return mapToResponse(updated);
+  }
+
+  /**
+   * Periodically expires PENDING_PAYMENT orders whose lock window has elapsed and releases their
+   * reserved stock in Store Service.
+   */
+  @Scheduled(fixedDelay = 60_000L)
+  @Transactional
+  public void expirePendingOrders() {
+    Instant now = Instant.now();
+    List<Order> expiredOrders =
+        orderRepository.findByStatusAndExpiresAtBefore(OrderStatus.PENDING_PAYMENT, now);
+    if (expiredOrders.isEmpty()) {
+      return;
+    }
+
+    for (Order order : expiredOrders) {
+      releaseStockIfCancelledOrExpired(order, OrderStatus.EXPIRED);
+      order.setStatus(OrderStatus.EXPIRED);
+      order.setUpdatedAt(now);
+    }
+    orderRepository.saveAll(expiredOrders);
+    if (log.isInfoEnabled()) {
+      log.info("Expired {} stale PENDING_PAYMENT order(s).", expiredOrders.size());
+    }
   }
 
   @SuppressWarnings("PMD.AvoidInstantiatingObjectsInLoops")
@@ -363,8 +444,7 @@ public class OrderProcessingService {
         order.getUpdatedAt());
   }
 
-  @SuppressWarnings("PMD.AvoidCatchingGenericException")
-  private void reserveStock(List<CreateOrderItemRequest> items) {
+  private List<ReservedItem> reserveStock(List<CreateOrderItemRequest> items) {
     List<ReservedItem> reservedItems = new ArrayList<>();
     try {
       for (CreateOrderItemRequest itemReq : items) {
@@ -372,13 +452,13 @@ public class OrderProcessingService {
         reservedItems.add(
             new ReservedItem(itemReq.storeUid(), itemReq.productUid(), itemReq.quantity()));
       }
+      return reservedItems;
     } catch (RuntimeException ex) {
       rollbackReservedStock(reservedItems);
       throw ex;
     }
   }
 
-  @SuppressWarnings("PMD.AvoidCatchingGenericException")
   private void rollbackReservedStock(List<ReservedItem> reservedItems) {
     if (log.isWarnEnabled()) {
       log.warn("Stock reservation failed. Rolling back {} items.", reservedItems.size());
@@ -398,7 +478,6 @@ public class OrderProcessingService {
     }
   }
 
-  @SuppressWarnings("PMD.AvoidCatchingGenericException")
   private void releaseStockIfCancelledOrExpired(Order order, OrderStatus newStatus) {
     OrderStatus previousStatus = order.getStatus();
     boolean isCancelledOrExpired =
@@ -433,31 +512,49 @@ public class OrderProcessingService {
     }
   }
 
+  @SuppressWarnings("PMD.PreserveStackTrace")
   private void validateItemPrices(List<CreateOrderItemRequest> items) {
-    for (CreateOrderItemRequest item : items) {
-      if (item.unitPrice() == null || item.unitPrice().compareTo(BigDecimal.ZERO) <= 0) {
-        throw new IllegalArgumentException(
-            "Unit price must be strictly positive for product " + item.productUid());
+    if (items.size() <= SINGLE_ITEM_COUNT) {
+      validateSingleItemPrice(items.get(0));
+      return;
+    }
+    List<CompletableFuture<Void>> futures =
+        items.stream()
+            .map(item -> CompletableFuture.runAsync(() -> validateSingleItemPrice(item)))
+            .toList();
+    try {
+      CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+    } catch (CompletionException ex) {
+      if (ex.getCause() instanceof RuntimeException runtimeEx) {
+        throw runtimeEx;
       }
-      Optional<BigDecimal> verifiedPrice =
-          storeClient.getProductPrice(item.storeUid(), item.productUid());
-      if (verifiedPrice.isEmpty()) {
-        throw new StoreServiceUnavailableException(
-            "Unable to verify price for product "
-                + item.productUid()
-                + " in store "
-                + item.storeUid());
-      }
-      if (verifiedPrice.get().compareTo(item.unitPrice()) != 0) {
-        throw new IllegalArgumentException(
-            "Price mismatch for product "
-                + item.productUid()
-                + ": expected "
-                + verifiedPrice.get()
-                + " EUR but received "
-                + item.unitPrice()
-                + " EUR");
-      }
+      throw ex;
+    }
+  }
+
+  private void validateSingleItemPrice(CreateOrderItemRequest item) {
+    if (item.unitPrice() == null || item.unitPrice().compareTo(BigDecimal.ZERO) <= 0) {
+      throw new IllegalArgumentException(
+          "Unit price must be strictly positive for product " + item.productUid());
+    }
+    Optional<BigDecimal> verifiedPrice =
+        storeClient.getProductPrice(item.storeUid(), item.productUid());
+    if (verifiedPrice.isEmpty()) {
+      throw new StoreServiceUnavailableException(
+          "Unable to verify price for product "
+              + item.productUid()
+              + " in store "
+              + item.storeUid());
+    }
+    if (verifiedPrice.get().compareTo(item.unitPrice()) != 0) {
+      throw new IllegalArgumentException(
+          "Price mismatch for product "
+              + item.productUid()
+              + ": expected "
+              + verifiedPrice.get()
+              + " EUR but received "
+              + item.unitPrice()
+              + " EUR");
     }
   }
 

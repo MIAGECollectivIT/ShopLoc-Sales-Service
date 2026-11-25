@@ -1,9 +1,11 @@
 package fr.miage.collectivit.salesservice.event;
 
+import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
 
 /** Publishes domain events to Kafka topics for inter-service communication (SLE-45). */
@@ -38,21 +40,39 @@ public class TransactionEventPublisher {
     }
 
     try {
-      kafkaTemplate.send(topic, event.userId(), event);
-      if (log.isInfoEnabled()) {
-        log.info(
-            "Published transaction approved event to Kafka topic {}: userId={}, reference={}",
-            topic,
-            event.userId(),
-            event.reference());
+      CompletableFuture<SendResult<String, Object>> future =
+          kafkaTemplate.send(topic, event.userId(), event);
+      if (future != null) {
+        future.whenComplete((result, ex) -> logDelivery(event, ex));
       }
     } catch (Exception ex) {
-      if (log.isWarnEnabled()) {
-        log.warn(
-            "Failed to publish transaction approved event to Kafka for user {}: {}",
+      if (log.isErrorEnabled()) {
+        log.error(
+            "Failed to initiate transaction approved event publish for user {}: {}",
             event.userId(),
-            ex.getMessage());
+            ex.getMessage(),
+            ex);
       }
+    }
+  }
+
+  private void logDelivery(TransactionApprovedKafkaEvent event, Throwable ex) {
+    if (ex != null) {
+      if (log.isErrorEnabled()) {
+        log.error(
+            "Failed to asynchronously deliver transaction approved event to Kafka for user {}: {}",
+            event.userId(),
+            ex.getMessage(),
+            ex);
+      }
+      return;
+    }
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Published transaction approved event to Kafka topic {}: userId={}, reference={}",
+          topic,
+          event.userId(),
+          event.reference());
     }
   }
 }

@@ -70,30 +70,36 @@ public class OrderPaymentEventPublisher {
       String key = resolvePartitionKey(event);
       CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(topic, key, event);
       if (future != null) {
-        future.whenComplete(
-            (result, ex) -> {
-              if (ex != null && log.isWarnEnabled()) {
-                log.warn(
-                    "Async failure publishing order paid event to Kafka for reference {}: {}",
-                    event.orderReference(),
-                    ex.getMessage());
-              }
-            });
-      }
-      if (log.isInfoEnabled()) {
-        log.info(
-            "Published order paid event to Kafka topic {}: reference={}, totalAmount={}",
-            topic,
-            event.orderReference(),
-            event.totalAmount());
+        future.whenComplete((result, ex) -> logDelivery(event, ex));
       }
     } catch (Exception ex) {
-      if (log.isWarnEnabled()) {
-        log.warn(
-            "Failed to publish order paid event to Kafka for reference {}: {}",
+      if (log.isErrorEnabled()) {
+        log.error(
+            "Failed to initiate order paid event publish for reference {}: {}",
             event.orderReference(),
-            ex.getMessage());
+            ex.getMessage(),
+            ex);
       }
+    }
+  }
+
+  private void logDelivery(OrderPaidKafkaEvent event, Throwable ex) {
+    if (ex != null) {
+      if (log.isErrorEnabled()) {
+        log.error(
+            "Failed to asynchronously deliver order paid event to Kafka for reference {}: {}",
+            event.orderReference(),
+            ex.getMessage(),
+            ex);
+      }
+      return;
+    }
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Published order paid event to Kafka topic {}: reference={}, totalAmount={}",
+          topic,
+          event.orderReference(),
+          event.totalAmount());
     }
   }
 }

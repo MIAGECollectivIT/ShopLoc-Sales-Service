@@ -1,7 +1,6 @@
 package fr.miage.collectivit.salesservice.service.receipt;
 
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
-import fr.miage.collectivit.salesservice.repository.OrderRepository;
 import fr.miage.collectivit.salesservice.service.OrderProcessingService;
 import jakarta.mail.internet.MimeMessage;
 import java.nio.charset.StandardCharsets;
@@ -18,7 +17,6 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -37,7 +35,6 @@ public class ReceiptEmailService {
 
   private final ObjectProvider<JavaMailSender> mailSenderProvider;
   private final ReceiptPdfService receiptPdfService;
-  private final OrderRepository orderRepository;
   private final OrderProcessingService orderProcessingService;
   private final String fromEmail;
 
@@ -45,12 +42,10 @@ public class ReceiptEmailService {
   public ReceiptEmailService(
       ObjectProvider<JavaMailSender> mailSenderProvider,
       ReceiptPdfService receiptPdfService,
-      OrderRepository orderRepository,
       OrderProcessingService orderProcessingService,
       @Value("${spring.mail.from:contact@shop-loc.fr}") String fromEmail) {
     this.mailSenderProvider = mailSenderProvider;
     this.receiptPdfService = receiptPdfService;
-    this.orderRepository = orderRepository;
     this.orderProcessingService = orderProcessingService;
     this.fromEmail = fromEmail;
   }
@@ -65,7 +60,8 @@ public class ReceiptEmailService {
   @Async
   public void sendReceiptEmailAsync(String orderIdentifier) {
     try {
-      Optional<OrderResponse> orderResponseOpt = loadOrderForReceipt(orderIdentifier);
+      Optional<OrderResponse> orderResponseOpt =
+          orderProcessingService.findOrderResponse(orderIdentifier);
       if (orderResponseOpt.isEmpty()) {
         log.warn("Cannot send receipt email: order {} not found", orderIdentifier);
         return;
@@ -82,7 +78,7 @@ public class ReceiptEmailService {
 
       boolean sent = sendReceiptEmailInternal(orderResponse);
       if (sent) {
-        markReceiptSent(orderResponse.orderReference());
+        orderProcessingService.markReceiptSent(orderResponse.orderReference());
         log.info(
             "Receipt email successfully dispatched for order {} to {}",
             orderResponse.orderReference(),
@@ -104,7 +100,8 @@ public class ReceiptEmailService {
    * @return true if email was dispatched or queued, false otherwise
    */
   public boolean resendReceiptEmail(String orderIdentifier) {
-    Optional<OrderResponse> orderResponseOpt = loadOrderForReceipt(orderIdentifier);
+    Optional<OrderResponse> orderResponseOpt =
+        orderProcessingService.findOrderResponse(orderIdentifier);
     if (orderResponseOpt.isEmpty()) {
       return false;
     }
@@ -122,27 +119,9 @@ public class ReceiptEmailService {
 
     boolean success = sendReceiptEmailInternal(orderResponse);
     if (success) {
-      markReceiptSent(orderResponse.orderReference());
+      orderProcessingService.markReceiptSent(orderResponse.orderReference());
     }
     return success;
-  }
-
-  @Transactional(readOnly = true)
-  public Optional<OrderResponse> loadOrderForReceipt(String orderIdentifier) {
-    return orderProcessingService
-        .resolveOrder(orderIdentifier)
-        .map(orderProcessingService::mapToResponse);
-  }
-
-  @Transactional
-  public void markReceiptSent(String orderReference) {
-    orderProcessingService
-        .resolveOrder(orderReference)
-        .ifPresent(
-            order -> {
-              order.setReceiptSentAt(Instant.now());
-              orderRepository.save(order);
-            });
   }
 
   private boolean sendReceiptEmailInternal(OrderResponse order) {
@@ -187,7 +166,7 @@ public class ReceiptEmailService {
 
       mailSender.send(mimeMessage);
       return true;
-    } catch (Exception ex) {
+    } catch (jakarta.mail.MessagingException | RuntimeException ex) {
       log.error(
           "Error occurred while transmitting email via SMTP for order {}: {}",
           order.orderReference(),
