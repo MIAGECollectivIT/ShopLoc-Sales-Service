@@ -39,7 +39,11 @@ public class BankGatewayClient {
 
   @SuppressWarnings("PMD.CloseResource")
   private static ClientHttpRequestFactory createClientHttpRequestFactory() {
-    HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    HttpClient httpClient =
+        HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
     JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
     factory.setReadTimeout(Duration.ofSeconds(10));
     return factory;

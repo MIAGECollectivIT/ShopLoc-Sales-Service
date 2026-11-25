@@ -39,7 +39,11 @@ public class LoyaltyRateClient {
 
   @SuppressWarnings("PMD.CloseResource")
   private static ClientHttpRequestFactory createClientHttpRequestFactory() {
-    HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    HttpClient httpClient =
+        HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(3))
+            .build();
     JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
     factory.setReadTimeout(Duration.ofSeconds(5));
     return factory;
