@@ -187,7 +187,7 @@ public class ReceiptEmailService {
 
       mailSender.send(mimeMessage);
       return true;
-    } catch (Exception ex) {
+    } catch (jakarta.mail.MessagingException | RuntimeException ex) {
       log.error(
           "Error occurred while transmitting email via SMTP for order {}: {}",
           order.orderReference(),

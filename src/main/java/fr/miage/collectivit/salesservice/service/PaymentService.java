@@ -47,6 +47,7 @@ public class PaymentService {
     this.transactionEventPublisher = transactionEventPublisher;
   }
 
+  @Transactional
   @SuppressWarnings("PMD.LawOfDemeter")
   public PaymentAuthorizationResponse authorizePayment(
       PaymentAuthorizationRequest request, String userId) {

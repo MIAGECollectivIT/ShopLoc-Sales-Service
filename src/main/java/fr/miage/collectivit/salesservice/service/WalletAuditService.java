@@ -96,7 +96,7 @@ public class WalletAuditService {
             txRef,
             cleanReason);
       }
-    } catch (Exception ex) {
+    } catch (RuntimeException ex) {
       if (log.isErrorEnabled()) {
         log.error("Failed to record wallet reload failure audit log: {}", ex.getMessage(), ex);
       }

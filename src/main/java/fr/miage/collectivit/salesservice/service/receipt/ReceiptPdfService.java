@@ -92,7 +92,7 @@ public class ReceiptPdfService {
 
       document.close();
       return out.toByteArray();
-    } catch (DocumentException ex) {
+    } catch (DocumentException | java.io.IOException ex) {
       log.error(
           "Failed to generate receipt PDF for order {}: {}",
           order.orderReference(),
@@ -100,7 +100,7 @@ public class ReceiptPdfService {
           ex);
       throw new IllegalStateException(
           "Erreur lors de la génération du document PDF de bon de retrait", ex);
-    } catch (Exception ex) {
+    } catch (RuntimeException ex) {
       log.error(
           "Unexpected error during PDF generation for order {}: {}",
           order.orderReference(),
