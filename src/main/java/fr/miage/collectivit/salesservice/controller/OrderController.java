@@ -2,6 +2,7 @@ package fr.miage.collectivit.salesservice.controller;
 
 import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
+import fr.miage.collectivit.salesservice.dto.PageResponse;
 import fr.miage.collectivit.salesservice.dto.UpdateOrderStatusRequest;
 import fr.miage.collectivit.salesservice.exception.ForbiddenException;
 import fr.miage.collectivit.salesservice.model.OrderStatus;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -44,7 +46,8 @@ import org.springframework.web.server.ResponseStatusException;
 @SuppressWarnings({
   "PMD.ExcessiveImports",
   "PMD.AvoidDuplicateLiterals",
-  "PMD.CouplingBetweenObjects"
+  "PMD.CouplingBetweenObjects",
+  "PMD.TooManyMethods"
 })
 public class OrderController {
 
@@ -97,6 +100,24 @@ public class OrderController {
     String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
 
     return ResponseEntity.ok(orderProcessingService.getOrders(userId, role));
+  }
+
+  @GetMapping("/page")
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
+  @Operation(
+      summary = "List paginated orders for authenticated caller",
+      description = "Returns paginated order history.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(responseCode = "200", description = "Orders retrieved successfully"),
+        @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED)
+      })
+  public ResponseEntity<PageResponse<OrderResponse>> getOrdersPage(
+      Pageable pageable, HttpServletRequest request) {
+    String role = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
+    String userId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+
+    return ResponseEntity.ok(orderProcessingService.getOrders(userId, role, pageable));
   }
 
   @GetMapping("/{reference}")

@@ -6,6 +6,7 @@ import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
 import fr.miage.collectivit.salesservice.dto.OrderItemResponse;
 import fr.miage.collectivit.salesservice.dto.OrderResponse;
 import fr.miage.collectivit.salesservice.dto.OrderStoreSummaryResponse;
+import fr.miage.collectivit.salesservice.dto.PageResponse;
 import fr.miage.collectivit.salesservice.dto.event.OrderPaidKafkaEvent;
 import fr.miage.collectivit.salesservice.dto.event.StoreOrderBreakdown;
 import fr.miage.collectivit.salesservice.exception.ForbiddenException;
@@ -39,6 +40,8 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -163,6 +166,20 @@ public class OrderProcessingService {
       orders = List.of();
     }
     return orders.stream().map(this::mapToResponse).toList();
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<OrderResponse> getOrders(
+      String callerUserId, String callerRole, Pageable pageable) {
+    Page<Order> orders;
+    if (UserRole.ADMIN.name().equalsIgnoreCase(callerRole)) {
+      orders = orderRepository.findAll(pageable);
+    } else if (callerUserId != null && !callerUserId.isBlank()) {
+      orders = orderRepository.findByCustomerIdOrderByCreatedAtDesc(callerUserId, pageable);
+    } else {
+      orders = Page.empty(pageable);
+    }
+    return PageResponse.from(orders.map(this::mapToResponse));
   }
 
   public Optional<Order> resolveOrder(String identifier) {

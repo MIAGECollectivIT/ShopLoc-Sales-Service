@@ -7,11 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
-import javax.crypto.SecretKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,20 +21,14 @@ import org.springframework.web.context.WebApplicationContext;
 @SpringBootTest
 class SalesSecurityIntegrationTest {
 
-  private static final String TEST_SECRET =
-      "dGhpc2lzYXZlcnlzZWNyZXRqd3R1c2Vyc3NlcnZpY2VrZXkxMjM0NTY=";
-
   @Autowired private WebApplicationContext webApplicationContext;
   @Autowired private JwtValidatorService jwtValidatorService;
 
   private MockMvc mockMvc;
-  private SecretKey signingKey;
 
   @BeforeEach
   void setUp() {
     mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-    byte[] keyBytes = Base64.getDecoder().decode(TEST_SECRET);
-    signingKey = Keys.hmacShaKeyFor(keyBytes);
   }
 
   private String generateTestToken(String role, String email, String jti) {
@@ -52,7 +43,7 @@ class SalesSecurityIntegrationTest {
         .claim("email", email)
         .claim("role", role)
         .claim("clientCode", "CL99999")
-        .signWith(signingKey)
+        .signWith(TestJwtTokens.getPrivateKey(), Jwts.SIG.RS256)
         .compact();
   }
 

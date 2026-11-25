@@ -2,10 +2,12 @@ package fr.miage.collectivit.salesservice.event;
 
 import fr.miage.collectivit.salesservice.config.KafkaTopicConfig;
 import fr.miage.collectivit.salesservice.dto.event.PhysicalPaymentCompletedEvent;
+import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
 
 /**
@@ -64,23 +66,40 @@ public class PhysicalPaymentEventPublisher {
   private void sendEvent(PhysicalPaymentCompletedEvent event) {
     try {
       String key = resolvePartitionKey(event);
-      kafkaTemplate.send(topic, key, event);
-      if (log.isInfoEnabled()) {
-        log.info(
-            "Published physical payment event to Kafka topic {}: key={}, reference={}, storeUid={}, amount={}",
-            topic,
-            key,
-            event.transactionReference(),
-            event.storeUid(),
-            event.amount());
+      CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(topic, key, event);
+      if (future != null) {
+        future.whenComplete((result, ex) -> logDelivery(event, key, ex));
       }
     } catch (Exception ex) {
-      if (log.isWarnEnabled()) {
-        log.warn(
-            "Failed to publish physical payment event to Kafka for reference {}: {}",
+      if (log.isErrorEnabled()) {
+        log.error(
+            "Failed to initiate physical payment event publish for reference {}: {}",
             event.transactionReference(),
-            ex.getMessage());
+            ex.getMessage(),
+            ex);
       }
+    }
+  }
+
+  private void logDelivery(PhysicalPaymentCompletedEvent event, String key, Throwable ex) {
+    if (ex != null) {
+      if (log.isErrorEnabled()) {
+        log.error(
+            "Failed to asynchronously deliver physical payment event to Kafka for reference {}: {}",
+            event.transactionReference(),
+            ex.getMessage(),
+            ex);
+      }
+      return;
+    }
+    if (log.isInfoEnabled()) {
+      log.info(
+          "Published physical payment event to Kafka topic {}: key={}, reference={}, storeUid={}, amount={}",
+          topic,
+          key,
+          event.transactionReference(),
+          event.storeUid(),
+          event.amount());
     }
   }
 }

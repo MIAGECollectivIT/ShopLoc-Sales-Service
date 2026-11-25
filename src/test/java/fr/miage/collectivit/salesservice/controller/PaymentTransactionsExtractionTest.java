@@ -7,15 +7,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import fr.miage.collectivit.salesservice.model.PaymentTransaction;
 import fr.miage.collectivit.salesservice.repository.PaymentTransactionRepository;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Base64;
-import java.util.Date;
 import java.util.UUID;
-import javax.crypto.SecretKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,36 +23,20 @@ import org.springframework.web.context.WebApplicationContext;
 @SpringBootTest
 class PaymentTransactionsExtractionTest {
 
-  private static final String TEST_SECRET =
-      "dGhpc2lzYXZlcnlzZWNyZXRqd3R1c2Vyc3NlcnZpY2VrZXkxMjM0NTY=";
-
   @Autowired private WebApplicationContext webApplicationContext;
   @Autowired private PaymentTransactionRepository paymentTransactionRepository;
 
   private MockMvc mockMvc;
-  private SecretKey signingKey;
 
   @BeforeEach
   void setUp() {
     mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-    byte[] keyBytes = Base64.getDecoder().decode(TEST_SECRET);
-    signingKey = Keys.hmacShaKeyFor(keyBytes);
     paymentTransactionRepository.deleteAll();
   }
 
   private String generateTestToken(String userId, String role) {
-    long now = System.currentTimeMillis();
-    return Jwts.builder()
-        .id(UUID.randomUUID().toString())
-        .subject(userId)
-        .issuer("shoploc-auth-service")
-        .issuedAt(new Date(now))
-        .expiration(new Date(now + 3600000))
-        .claim("userId", userId)
-        .claim("email", userId + "@example.com")
-        .claim("role", role)
-        .signWith(signingKey)
-        .compact();
+    return fr.miage.collectivit.salesservice.security.TestJwtTokens.generateToken(
+        role, userId + "@example.com", userId, UUID.randomUUID().toString(), "CL99999");
   }
 
   private static final String USER_1 = "11111111-1111-1111-1111-111111111101";

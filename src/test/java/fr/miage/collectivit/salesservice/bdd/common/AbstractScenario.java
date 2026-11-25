@@ -3,11 +3,8 @@ package fr.miage.collectivit.salesservice.bdd.common;
 import fr.miage.collectivit.salesservice.client.BankGatewayClient;
 import fr.miage.collectivit.salesservice.model.PaymentTransaction;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
-import javax.crypto.SecretKey;
 
 public abstract class AbstractScenario {
 
@@ -23,8 +20,6 @@ public abstract class AbstractScenario {
   protected static final String HEADER_AUTHORIZATION = "Authorization";
   protected static final String BEARER_PREFIX = "Bearer ";
 
-  protected static final String TEST_JWT_SECRET =
-      "dGhpc2lzYXZlcnlzZWNyZXRqd3R1c2Vyc3NlcnZpY2VrZXkxMjM0NTY=";
   protected static final String TEST_JWT_ISSUER = "shoploc-auth-service";
   protected static final String DEFAULT_CLIENT_EMAIL = "client@shoploc.fr";
   protected static final String DEFAULT_CLIENT_CODE = "CL10001";
@@ -34,8 +29,6 @@ public abstract class AbstractScenario {
   protected static final String MOCK_TIMESTAMP = "2026-11-08T10:30:00Z";
 
   protected String generateJwtToken(String role) {
-    byte[] keyBytes = Base64.getDecoder().decode(TEST_JWT_SECRET);
-    SecretKey signingKey = Keys.hmacShaKeyFor(keyBytes);
     long now = System.currentTimeMillis();
     return Jwts.builder()
         .id(UUID.randomUUID().toString())
@@ -47,7 +40,9 @@ public abstract class AbstractScenario {
         .claim("email", DEFAULT_CLIENT_EMAIL)
         .claim("role", role)
         .claim("clientCode", DEFAULT_CLIENT_CODE)
-        .signWith(signingKey)
+        .signWith(
+            fr.miage.collectivit.salesservice.security.TestJwtTokens.getPrivateKey(),
+            Jwts.SIG.RS256)
         .compact();
   }
 

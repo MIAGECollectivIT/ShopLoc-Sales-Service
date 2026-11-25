@@ -1,5 +1,6 @@
 package fr.miage.collectivit.salesservice.controller;
 
+import fr.miage.collectivit.salesservice.dto.PageResponse;
 import fr.miage.collectivit.salesservice.dto.WalletDebitRequest;
 import fr.miage.collectivit.salesservice.dto.WalletReloadRequest;
 import fr.miage.collectivit.salesservice.dto.WalletResponse;
@@ -18,6 +19,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -105,6 +107,27 @@ public class WalletController {
       HttpServletRequest request) {
     String authenticatedUserId = resolveUserId(requestedUserId, request);
     return ResponseEntity.ok(walletService.getTransactions(authenticatedUserId));
+  }
+
+  @GetMapping("/transactions/page")
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
+  @Operation(
+      summary = "Consult paginated transaction history in real time (SLE-18)",
+      description =
+          "Returns a paginated slice of credit and debit transactions with amounts and partner store names.")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "Paginated transaction history retrieved successfully"),
+    @ApiResponse(responseCode = CODE_401, description = MSG_UNAUTHORIZED),
+    @ApiResponse(responseCode = "403", description = "Forbidden")
+  })
+  public ResponseEntity<PageResponse<WalletTransactionResponse>> getTransactionsPage(
+      @RequestParam(value = "userId", required = false) UUID requestedUserId,
+      Pageable pageable,
+      HttpServletRequest request) {
+    String authenticatedUserId = resolveUserId(requestedUserId, request);
+    return ResponseEntity.ok(walletService.getTransactions(authenticatedUserId, pageable));
   }
 
   @PostMapping("/debit")

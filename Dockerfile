@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ==========================================
 # Stage 1: Build the application (Maven + Eclipse Temurin 21)
 # ==========================================
@@ -6,11 +7,11 @@ WORKDIR /build
 
 # Cache Maven dependencies
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
+RUN --mount=type=cache,target=/root/.m2 mvn -B -q dependency:resolve-plugins dependency:resolve
 
 # Compile and package the executable JAR
 COPY src ./src
-RUN mvn clean package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 mvn -B -o clean package -DskipTests
 
 # ==========================================
 # Stage 2: Minimal ARM64 / Multi-Arch runtime image

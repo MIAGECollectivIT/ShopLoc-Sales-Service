@@ -1,6 +1,7 @@
 package fr.miage.collectivit.salesservice.service;
 
 import fr.miage.collectivit.salesservice.client.BankGatewayClient;
+import fr.miage.collectivit.salesservice.dto.PageResponse;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
 import fr.miage.collectivit.salesservice.dto.UserPaymentTransactionResponse;
@@ -17,6 +18,8 @@ import java.util.Locale;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -132,6 +135,26 @@ public class PaymentService {
         .stream()
         .map(UserPaymentTransactionResponse::fromEntity)
         .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<UserPaymentTransactionResponse> getUserTransactions(
+      String userId, Instant from, Instant to, Pageable pageable) {
+    if (!hasText(userId)) {
+      throw new IllegalArgumentException("User ID must not be blank");
+    }
+    if (from == null || to == null) {
+      throw new IllegalArgumentException("Both 'from' and 'to' date parameters are required");
+    }
+    if (from.isAfter(to)) {
+      throw new IllegalArgumentException(
+          "The 'from' timestamp must be before or equal to 'to' timestamp");
+    }
+
+    Page<PaymentTransaction> page =
+        paymentTransactionRepository.findByUserIdAndStatusAndCreatedAtBetweenOrderByCreatedAtDesc(
+            userId.trim(), PaymentTransaction.RG001_APPROVED_STATUS, from, to, pageable);
+    return PageResponse.from(page.map(UserPaymentTransactionResponse::fromEntity));
   }
 
   @Transactional(readOnly = true)

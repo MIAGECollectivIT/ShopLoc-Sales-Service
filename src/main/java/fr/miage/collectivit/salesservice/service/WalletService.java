@@ -1,5 +1,6 @@
 package fr.miage.collectivit.salesservice.service;
 
+import fr.miage.collectivit.salesservice.dto.PageResponse;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationRequest;
 import fr.miage.collectivit.salesservice.dto.PaymentAuthorizationResponse;
 import fr.miage.collectivit.salesservice.dto.WalletDebitRequest;
@@ -22,6 +23,8 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,7 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
 @SuppressWarnings({
   "PMD.LawOfDemeter",
   "PMD.AvoidDuplicateLiterals",
-  "PMD.AvoidCatchingGenericException"
+  "PMD.AvoidCatchingGenericException",
+  "PMD.TooManyMethods"
 })
 public class WalletService {
 
@@ -326,6 +330,14 @@ public class WalletService {
     return walletTransactionRepository.findByUserIdOrderByCreatedAtDesc(userId.trim()).stream()
         .map(WalletTransactionResponse::fromEntity)
         .toList();
+  }
+
+  /** Returns paginated ordered transaction history (newest to oldest) for the citizen (SLE-18). */
+  @Transactional(readOnly = true)
+  public PageResponse<WalletTransactionResponse> getTransactions(String userId, Pageable pageable) {
+    Page<WalletTransaction> page =
+        walletTransactionRepository.findByUserIdOrderByCreatedAtDesc(userId.trim(), pageable);
+    return PageResponse.from(page.map(WalletTransactionResponse::fromEntity));
   }
 
   private void validateReloadAmount(BigDecimal amount) {
