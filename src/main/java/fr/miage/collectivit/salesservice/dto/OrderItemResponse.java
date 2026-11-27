@@ -1,5 +1,6 @@
 package fr.miage.collectivit.salesservice.dto;
 
+import fr.miage.collectivit.salesservice.model.OrderItemType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -24,4 +25,29 @@ public record OrderItemResponse(
         String productName,
     @Schema(description = "Unit price in euros", example = "1.35") BigDecimal unitPrice,
     @Schema(description = "Quantity ordered", example = "2") Integer quantity,
-    @Schema(description = "Total price in euros", example = "2.70") BigDecimal totalPrice) {}
+    @Schema(description = "Total price in euros", example = "2.70") BigDecimal totalPrice,
+    @Schema(description = "Line item type", example = "PRODUCT") OrderItemType itemType,
+    @Schema(description = "Total points cost for gift lines", example = "150") Integer pointsCost) {
+
+  public OrderItemResponse(
+      UUID uid,
+      UUID storeUid,
+      String storeName,
+      UUID productUid,
+      String productName,
+      BigDecimal unitPrice,
+      Integer quantity,
+      BigDecimal totalPrice) {
+    this(
+        uid,
+        storeUid,
+        storeName,
+        productUid,
+        productName,
+        unitPrice,
+        quantity,
+        totalPrice,
+        OrderItemType.PRODUCT,
+        0);
+  }
+}

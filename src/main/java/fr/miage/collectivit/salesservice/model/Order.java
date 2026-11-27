@@ -54,6 +54,10 @@ public class Order {
   @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
   private BigDecimal totalAmount;
 
+  @Column(name = "total_points_cost", nullable = false)
+  @Builder.Default
+  private Integer totalPointsCost = 0;
+
   @Column(name = "currency", nullable = false, length = 3)
   private String currency;
 
@@ -102,6 +106,9 @@ public class Order {
     }
     if (this.status == null) {
       this.status = OrderStatus.PENDING_PAYMENT;
+    }
+    if (this.totalPointsCost == null) {
+      this.totalPointsCost = 0;
     }
   }
 

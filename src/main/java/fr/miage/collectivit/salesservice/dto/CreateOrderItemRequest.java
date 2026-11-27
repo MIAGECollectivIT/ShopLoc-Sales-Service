@@ -1,5 +1,6 @@
 package fr.miage.collectivit.salesservice.dto;
 
+import fr.miage.collectivit.salesservice.model.OrderItemType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -28,7 +29,7 @@ public record CreateOrderItemRequest(
         String productName,
     @Schema(description = "Unit price in euros", example = "1.35")
         @NotNull(message = "Unit price is required")
-        @DecimalMin(value = "0.01", message = "Unit price must be strictly positive")
+        @DecimalMin(value = "0.00", message = "Unit price must be zero or positive")
         @Digits(
             integer = 8,
             fraction = 2,
@@ -37,4 +38,21 @@ public record CreateOrderItemRequest(
     @Schema(description = "Quantity ordered", example = "2")
         @NotNull(message = "Quantity is required")
         @Min(value = 1, message = "Quantity must be at least 1")
-        Integer quantity) {}
+        Integer quantity,
+    @Schema(description = "Line item type (PRODUCT or GIFT)", example = "PRODUCT")
+        OrderItemType itemType) {
+
+  public CreateOrderItemRequest(
+      UUID storeUid,
+      String storeName,
+      UUID productUid,
+      String productName,
+      BigDecimal unitPrice,
+      Integer quantity) {
+    this(storeUid, storeName, productUid, productName, unitPrice, quantity, OrderItemType.PRODUCT);
+  }
+
+  public OrderItemType resolvedItemType() {
+    return itemType != null ? itemType : OrderItemType.PRODUCT;
+  }
+}

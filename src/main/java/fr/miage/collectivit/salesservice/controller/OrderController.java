@@ -84,6 +84,35 @@ public class OrderController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
+  @GetMapping("/customers/{userId}/stores/{storeUid}/has-purchase")
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
+  @Operation(summary = "Check whether a customer has at least one settled purchase in a store")
+  public ResponseEntity<Map<String, Boolean>> hasCustomerPurchasedInStore(
+      @PathVariable String userId, @PathVariable UUID storeUid, HttpServletRequest request) {
+    verifySelfOrPrivileged(userId, request);
+    boolean hasPurchase = orderProcessingService.hasCustomerPurchasedInStore(userId, storeUid);
+    return ResponseEntity.ok(Map.of("hasPurchase", hasPurchase));
+  }
+
+  @GetMapping("/customers/{userId}/purchased-stores")
+  @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
+  @Operation(summary = "List store UIDs where a customer has at least one settled purchase")
+  public ResponseEntity<List<UUID>> getCustomerPurchasedStores(
+      @PathVariable String userId, HttpServletRequest request) {
+    verifySelfOrPrivileged(userId, request);
+    return ResponseEntity.ok(orderProcessingService.getCustomerPurchasedStoreUids(userId));
+  }
+
+  private void verifySelfOrPrivileged(String targetUserId, HttpServletRequest request) {
+    String role = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ROLE);
+    if (UserRole.CLIENT.name().equalsIgnoreCase(role)) {
+      String callerUserId = (String) request.getAttribute(JwtAuthInterceptor.ATTR_USER_ID);
+      if (callerUserId == null || !callerUserId.equals(targetUserId)) {
+        throw new ForbiddenException("Access denied: clients can only query their own purchases");
+      }
+    }
+  }
+
   @GetMapping
   @RequiresRole({UserRole.CLIENT, UserRole.MERCHANT, UserRole.ADMIN})
   @Operation(

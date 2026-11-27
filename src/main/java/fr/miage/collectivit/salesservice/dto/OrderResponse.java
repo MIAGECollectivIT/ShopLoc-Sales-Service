@@ -29,7 +29,42 @@ public record OrderResponse(
         List<OrderStoreSummaryResponse> storeSummaries,
     @Schema(description = "All order items") List<OrderItemResponse> items,
     @Schema(description = "Receipt email transmission timestamp if sent") Instant receiptSentAt,
-    @Schema(description = "Order last update timestamp") Instant updatedAt) {
+    @Schema(description = "Order last update timestamp") Instant updatedAt,
+    @Schema(description = "Total loyalty points pending debit for gift items", example = "150")
+        Integer totalPointsCost) {
+
+  public OrderResponse(
+      UUID uid,
+      String orderReference,
+      String customerId,
+      String customerEmail,
+      String clientCode,
+      BigDecimal totalAmount,
+      String currency,
+      String status,
+      Instant expiresAt,
+      Instant createdAt,
+      List<OrderStoreSummaryResponse> storeSummaries,
+      List<OrderItemResponse> items,
+      Instant receiptSentAt,
+      Instant updatedAt) {
+    this(
+        uid,
+        orderReference,
+        customerId,
+        customerEmail,
+        clientCode,
+        totalAmount,
+        currency,
+        status,
+        expiresAt,
+        createdAt,
+        storeSummaries,
+        items,
+        receiptSentAt,
+        updatedAt,
+        0);
+  }
 
   public OrderResponse(
       UUID uid,
@@ -59,7 +94,8 @@ public record OrderResponse(
         storeSummaries,
         items,
         receiptSentAt,
-        null);
+        null,
+        0);
   }
 
   public OrderResponse(
@@ -89,6 +125,7 @@ public record OrderResponse(
         storeSummaries,
         items,
         null,
-        null);
+        null,
+        0);
   }
 }

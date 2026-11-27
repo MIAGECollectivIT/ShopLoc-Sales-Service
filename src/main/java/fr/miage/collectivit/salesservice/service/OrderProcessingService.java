@@ -1,5 +1,6 @@
 package fr.miage.collectivit.salesservice.service;
 
+import fr.miage.collectivit.salesservice.client.LoyaltyHoldClient;
 import fr.miage.collectivit.salesservice.client.StoreClient;
 import fr.miage.collectivit.salesservice.dto.CreateOrderItemRequest;
 import fr.miage.collectivit.salesservice.dto.CreateOrderRequest;
@@ -14,6 +15,7 @@ import fr.miage.collectivit.salesservice.exception.OrderNotFoundException;
 import fr.miage.collectivit.salesservice.exception.StoreServiceUnavailableException;
 import fr.miage.collectivit.salesservice.model.Order;
 import fr.miage.collectivit.salesservice.model.OrderItem;
+import fr.miage.collectivit.salesservice.model.OrderItemType;
 import fr.miage.collectivit.salesservice.model.OrderStatus;
 import fr.miage.collectivit.salesservice.model.WalletTransactionType;
 import fr.miage.collectivit.salesservice.repository.OrderRepository;
@@ -64,6 +66,7 @@ import org.springframework.transaction.support.TransactionTemplate;
   "PMD.GodClass",
   "PMD.TooManyMethods",
   "PMD.CyclomaticComplexity",
+  "PMD.CognitiveComplexity",
   "PMD.AvoidCatchingGenericException"
 })
 public class OrderProcessingService {
@@ -81,6 +84,9 @@ public class OrderProcessingService {
   @Autowired(required = false)
   private TransactionTemplate transactionTemplate;
 
+  @Autowired(required = false)
+  private LoyaltyHoldClient loyaltyHoldClient;
+
   public OrderResponse createOrder(
       CreateOrderRequest request, String customerId, String customerEmail) {
     return createOrder(request, customerId, customerEmail, null);
@@ -96,17 +102,82 @@ public class OrderProcessingService {
     }
 
     validateItemPrices(request.items());
-    List<ReservedItem> reservedItems = reserveStock(request.items());
     Order order = buildOrderEntity(request, customerId, customerEmail, authenticatedClientCode);
 
+    List<CreateOrderItemRequest> productItems =
+        request.items().stream()
+            .filter(i -> i.resolvedItemType() == OrderItemType.PRODUCT)
+            .toList();
+    List<CreateOrderItemRequest> giftItems =
+        request.items().stream().filter(i -> i.resolvedItemType() == OrderItemType.GIFT).toList();
+
+    List<ReservedItem> reservedItems = reserveStock(productItems);
+    boolean holdCreated = false;
     try {
+      if (!giftItems.isEmpty() && loyaltyHoldClient != null) {
+        holdCreated = reserveGiftHold(order, giftItems, customerId);
+      }
       return transactionTemplate != null
           ? transactionTemplate.execute(status -> persistAndMapOrder(order))
           : persistAndMapOrder(order);
     } catch (RuntimeException ex) {
       rollbackReservedStock(reservedItems);
+      if (holdCreated && loyaltyHoldClient != null) {
+        loyaltyHoldClient.releaseHold(order.getOrderReference());
+      }
       throw ex;
     }
+  }
+
+  private boolean reserveGiftHold(
+      Order order, List<CreateOrderItemRequest> giftItems, String customerId) {
+    if (customerId == null || customerId.isBlank()) {
+      throw new ForbiddenException("Authentification requise pour commander un cadeau fidélité.");
+    }
+    List<LoyaltyHoldClient.HoldItemRequest> holdItems =
+        giftItems.stream()
+            .map(
+                i ->
+                    new LoyaltyHoldClient.HoldItemRequest(
+                        i.storeUid(), i.productUid(), i.quantity()))
+            .toList();
+    LoyaltyHoldClient.HoldResponse hold =
+        loyaltyHoldClient.createHold(
+            new LoyaltyHoldClient.CreateHoldRequest(
+                order.getOrderReference(), customerId, order.getExpiresAt(), holdItems));
+    if (hold != null && hold.items() != null) {
+      Map<UUID, Integer> unitCostByGift = new LinkedHashMap<>();
+      for (LoyaltyHoldClient.HoldItemResponse hItem : hold.items()) {
+        unitCostByGift.put(hItem.giftUid(), hItem.unitPointsCost());
+      }
+      int totalPoints = 0;
+      for (OrderItem item : order.getItems()) {
+        if (item.getItemType() == OrderItemType.GIFT) {
+          int unitPts = unitCostByGift.getOrDefault(item.getProductUid(), 0);
+          int linePts = unitPts * item.getQuantity();
+          item.setPointsCost(linePts);
+          totalPoints += linePts;
+        }
+      }
+      order.setTotalPointsCost(totalPoints);
+    }
+    return true;
+  }
+
+  @Transactional(readOnly = true)
+  public boolean hasCustomerPurchasedInStore(String userId, UUID storeUid) {
+    if (userId == null || userId.isBlank() || storeUid == null) {
+      return false;
+    }
+    return orderRepository.existsSettledOrderForCustomerAndStore(userId.trim(), storeUid);
+  }
+
+  @Transactional(readOnly = true)
+  public List<UUID> getCustomerPurchasedStoreUids(String userId) {
+    if (userId == null || userId.isBlank()) {
+      return List.of();
+    }
+    return orderRepository.findSettledStoreUidsByCustomerId(userId.trim());
   }
 
   private Order buildOrderEntity(
@@ -155,9 +226,12 @@ public class OrderProcessingService {
               .unitPrice(itemReq.unitPrice())
               .quantity(itemReq.quantity())
               .totalPrice(lineTotal)
+              .itemType(itemReq.resolvedItemType())
+              .pointsCost(0)
               .build());
     }
     order.setTotalAmount(totalOrderAmount);
+    order.setTotalPointsCost(0);
     return order;
   }
 
@@ -400,7 +474,9 @@ public class OrderProcessingService {
               item.getProductName(),
               item.getUnitPrice(),
               item.getQuantity(),
-              item.getTotalPrice());
+              item.getTotalPrice(),
+              item.getItemType() != null ? item.getItemType() : OrderItemType.PRODUCT,
+              item.getPointsCost() != null ? item.getPointsCost() : 0);
       itemResponses.add(itemResp);
 
       storeItemsMap.computeIfAbsent(item.getStoreUid(), k -> new ArrayList<>()).add(itemResp);
@@ -441,7 +517,8 @@ public class OrderProcessingService {
         storeSummaries,
         itemResponses,
         order.getReceiptSentAt(),
-        order.getUpdatedAt());
+        order.getUpdatedAt(),
+        order.getTotalPointsCost() != null ? order.getTotalPointsCost() : 0);
   }
 
   private List<ReservedItem> reserveStock(List<CreateOrderItemRequest> items) {
@@ -496,7 +573,12 @@ public class OrderProcessingService {
           previousStatus,
           newStatus);
     }
+    boolean hasGifts = false;
     for (OrderItem item : order.getItems()) {
+      if (item.getItemType() == OrderItemType.GIFT) {
+        hasGifts = true;
+        continue;
+      }
       try {
         storeClient.updateStock(item.getStoreUid(), item.getProductUid(), item.getQuantity());
       } catch (RuntimeException ex) {
@@ -509,6 +591,9 @@ public class OrderProcessingService {
               ex.getMessage());
         }
       }
+    }
+    if (hasGifts && loyaltyHoldClient != null) {
+      loyaltyHoldClient.releaseHold(order.getOrderReference());
     }
   }
 
@@ -533,6 +618,13 @@ public class OrderProcessingService {
   }
 
   private void validateSingleItemPrice(CreateOrderItemRequest item) {
+    if (item.resolvedItemType() == OrderItemType.GIFT) {
+      if (item.unitPrice() == null || item.unitPrice().compareTo(BigDecimal.ZERO) != 0) {
+        throw new IllegalArgumentException(
+            "Gift item unit price must be 0.00 EUR (RG002) for gift " + item.productUid());
+      }
+      return;
+    }
     if (item.unitPrice() == null || item.unitPrice().compareTo(BigDecimal.ZERO) <= 0) {
       throw new IllegalArgumentException(
           "Unit price must be strictly positive for product " + item.productUid());
